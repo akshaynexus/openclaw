@@ -477,7 +477,7 @@ export async function installSkill(params: SkillInstallRequest): Promise<SkillIn
           code: brewResult.code,
         };
       }
-    } else if (resolveRuntimePlatform() === "windows" && hasBinary("winget")) {
+    } else if (resolveRuntimePlatform() === "win32" && hasBinary("winget")) {
       const result = await installWithWinget("GoLang.Go", timeoutMs);
       if (result.code !== 0) {
         return {
