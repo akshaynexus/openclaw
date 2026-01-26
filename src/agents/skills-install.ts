@@ -495,7 +495,7 @@ export async function installSkill(params: SkillInstallRequest): Promise<SkillIn
           warnings,
         );
       }
-    } else if (resolveRuntimePlatform() === "windows" && hasBinary("winget")) {
+    } else if (resolveRuntimePlatform() === "win32" && hasBinary("winget")) {
       const result = await installWithWinget("astral-sh.uv", timeoutMs);
       if (result.code !== 0) {
         return {
