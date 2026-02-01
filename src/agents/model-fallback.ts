@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
+import type { AuthProfileStore } from "./auth-profiles.js";
 import type { FailoverReason } from "./pi-embedded-helpers.js";
 import {
   ensureAuthProfileStore,
@@ -12,6 +13,7 @@ import {
   isFailoverError,
   isTimeoutError,
 } from "./failover-error.js";
+import { AllModelsFailedError } from "./model-fallback-error.js";
 import {
   buildConfiguredAllowlistKeys,
   buildModelAliasIndex,
@@ -204,6 +206,26 @@ function resolveFallbackCandidates(params: {
   return candidates;
 }
 
+/**
+ * Finds the earliest cooldown expiry timestamp among the given profile IDs.
+ * Only checks profiles that are in the provided profileIds set.
+ */
+function findEarliestCooldownExpiry(
+  store: AuthProfileStore,
+  profileIds: Set<string>,
+): number | null {
+  let earliest: number | null = null;
+  for (const id of profileIds) {
+    const stats = store.usageStats?.[id];
+    if (!stats) continue;
+    const unusableUntil = Math.max(stats.cooldownUntil ?? 0, stats.disabledUntil ?? 0);
+    if (unusableUntil > 0 && (earliest === null || unusableUntil < earliest)) {
+      earliest = unusableUntil;
+    }
+  }
+  return earliest;
+}
+
 export async function runWithModelFallback<T>(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
@@ -313,9 +335,32 @@ export async function runWithModelFallback<T>(params: {
           )
           .join(" | ")
       : "unknown";
-  throw new Error(`All models failed (${attempts.length || candidates.length}): ${summary}`, {
-    cause: lastError instanceof Error ? lastError : undefined,
-  });
+
+  // Check if all failures are due to rate limiting
+  const allRateLimited = attempts.length > 0 && attempts.every((a) => a.reason === "rate_limit");
+
+  let retryAfterMs: number | undefined;
+  if (allRateLimited && authStore) {
+    // Collect only the profileIds that were actually tried (from candidates)
+    const profileIds = new Set<string>();
+    for (const candidate of candidates) {
+      const profiles = resolveAuthProfileOrder({
+        cfg: params.cfg,
+        store: authStore,
+        provider: candidate.provider,
+      });
+      profiles.forEach((id) => profileIds.add(id));
+    }
+    const earliestExpiry = findEarliestCooldownExpiry(authStore, profileIds);
+    if (earliestExpiry) {
+      retryAfterMs = Math.max(0, earliestExpiry - Date.now());
+    }
+  }
+
+  throw new AllModelsFailedError(
+    `All models failed (${attempts.length || candidates.length}): ${summary}`,
+    { attempts, allInCooldown: allRateLimited, retryAfterMs, cause: lastError },
+  );
 }
 
 export async function runWithImageModelFallback<T>(params: {
