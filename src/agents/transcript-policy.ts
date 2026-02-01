@@ -95,12 +95,11 @@ export function resolveTranscriptPolicy(params: {
 
   const needsNonImageSanitize = isGoogle || isAnthropic || isMistral || isOpenRouterGemini;
 
-  // Always sanitize tool call IDs to ensure cross-provider compatibility.
+  // Always sanitize tool call IDs (except OpenAI) to ensure cross-provider compatibility.
   // Source models (e.g., Ollama/Qwen3) may generate IDs with characters like "|"
   // that are invalid for other providers (Anthropic, Google, etc.).
   // Using "strict" mode (alphanumeric only) works universally.
   // Exception: Mistral requires exactly 9 characters.
-  const sanitizeToolCallIds = true;
   const toolCallIdMode: ToolCallIdMode | undefined = isMistral ? "strict9" : "strict";
   const repairToolUseResultPairing = isGoogle || isAnthropic;
   const sanitizeThoughtSignatures = isOpenRouterGemini
@@ -110,7 +109,7 @@ export function resolveTranscriptPolicy(params: {
 
   return {
     sanitizeMode: isOpenAi ? "images-only" : needsNonImageSanitize ? "full" : "images-only",
-    sanitizeToolCallIds: !isOpenAi && sanitizeToolCallIds,
+    sanitizeToolCallIds: !isOpenAi,
     toolCallIdMode,
     repairToolUseResultPairing: !isOpenAi && repairToolUseResultPairing,
     preserveSignatures: isAntigravityClaudeModel,
