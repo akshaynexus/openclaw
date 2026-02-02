@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "../config/config.js";
 import type { AuthProfileStore } from "./auth-profiles.js";
 import type { FailoverReason } from "./pi-embedded-helpers.js";
+import { isModelQuotaExhausted } from "./antigravity-quota-cache.js";
 import {
   ensureAuthProfileStore,
   isProfileInCooldown,
@@ -293,6 +294,42 @@ export async function runWithModelFallback<T>(params: {
             provider: candidate.provider,
             model: candidate.model,
             error: `Provider ${candidate.provider} is in cooldown (all profiles unavailable)`,
+            reason: "rate_limit",
+          });
+          continue;
+        }
+      }
+
+      // Proactive quota check for Antigravity - they don't return 429, just hang
+      if (candidate.provider === "google-antigravity") {
+        let allProfilesExhausted = true;
+        let quotaCheckAttempted = false;
+        for (const profileId of profileIds) {
+          if (isProfileInCooldown(authStore, profileId, candidate.model)) continue;
+          const profile = authStore.profiles[profileId];
+          if (!profile || !("access" in profile) || !profile.access) continue;
+          quotaCheckAttempted = true;
+          try {
+            const quotaResult = await isModelQuotaExhausted(
+              profileId,
+              profile.access,
+              candidate.model,
+            );
+            if (!quotaResult.exhausted) {
+              allProfilesExhausted = false;
+              break;
+            }
+          } catch {
+            // Quota check failed - don't block, let request proceed
+            allProfilesExhausted = false;
+            break;
+          }
+        }
+        if (allProfilesExhausted && quotaCheckAttempted) {
+          attempts.push({
+            provider: candidate.provider,
+            model: candidate.model,
+            error: `Model ${candidate.model} quota exhausted (all profiles at 99%+)`,
             reason: "rate_limit",
           });
           continue;

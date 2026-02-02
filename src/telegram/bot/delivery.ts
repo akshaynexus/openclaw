@@ -109,7 +109,8 @@ export async function deliverReplies(params: {
       const chunks = chunkText(reply.text || "");
       for (let i = 0; i < chunks.length; i += 1) {
         const chunk = chunks[i];
-        if (!chunk) {
+        // Skip empty chunks - Telegram rejects messages with empty text.
+        if (!chunk || !chunk.html?.trim()) {
           continue;
         }
         // Only attach buttons to the first chunk.
@@ -516,6 +517,11 @@ async function sendTelegramText(
     replyMarkup?: ReturnType<typeof buildInlineKeyboard>;
   },
 ): Promise<number | undefined> {
+  // Telegram rejects messages with empty text. Return early to avoid API errors.
+  if (!text?.trim()) {
+    logVerbose("telegram sendTelegramText skipped: empty text");
+    return undefined;
+  }
   const baseParams = buildTelegramSendParams({
     replyToMessageId: opts?.replyToMessageId,
     replyQuoteText: opts?.replyQuoteText,

@@ -1,5 +1,5 @@
-import type { StreamFn } from "@mariozechner/pi-agent-core";
-import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
+import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
+import type { Model, Api, SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../../config/config.js";
 import { log } from "./logger.js";
@@ -117,6 +117,72 @@ function createOpenRouterHeadersWrapper(baseStreamFn: StreamFn | undefined): Str
     });
 }
 
+function assistantMessageHasToolCall(msg: AgentMessage): boolean {
+  if (!msg || typeof msg !== "object" || msg.role !== "assistant") {
+    return false;
+  }
+  if (!Array.isArray(msg.content)) {
+    return false;
+  }
+  for (const block of msg.content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const type = (block as { type?: unknown }).type;
+    if (type === "toolCall" || type === "toolUse" || type === "functionCall") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * OpenRouter (and some upstream providers it routes to) may require `reasoning_content` to exist
+ * on assistant tool-call messages when thinking is enabled.
+ *
+ * We set an empty string for compatibility, without mutating the original session transcript.
+ */
+function createOpenRouterReasoningContentWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    if (model?.provider !== "openrouter" || model?.api !== "openai-completions") {
+      return underlying(model, context, options);
+    }
+
+    const messages = (context as { messages?: unknown }).messages;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return underlying(model, context, options);
+    }
+
+    let didChange = false;
+    const nextMessages = messages.map((msg) => {
+      const candidate = msg as AgentMessage;
+      if (!assistantMessageHasToolCall(candidate)) {
+        return msg;
+      }
+      const record = msg as Record<string, unknown>;
+      if (typeof record.reasoning_content === "string") {
+        return msg;
+      }
+      didChange = true;
+      return { ...record, reasoning_content: "" };
+    });
+
+    if (!didChange) {
+      return underlying(model, context, options);
+    }
+
+    return underlying(
+      model,
+      {
+        ...(context as unknown as Record<string, unknown>),
+        messages: nextMessages,
+      } as typeof context,
+      options,
+    );
+  };
+}
+
 /**
  * Apply extra params (like temperature) to an agent's streamFn.
  * Also adds OpenRouter app attribution headers when using the OpenRouter provider.
@@ -150,7 +216,81 @@ export function applyExtraParamsToAgent(
   }
 
   if (provider === "openrouter") {
+    agent.streamFn = createOpenRouterReasoningContentWrapper(agent.streamFn);
     log.debug(`applying OpenRouter app attribution headers for ${provider}/${modelId}`);
     agent.streamFn = createOpenRouterHeadersWrapper(agent.streamFn);
   }
+
+  // Apply role transformation for incompatible providers
+  if (needsRoleTransformation(provider, modelId)) {
+    log.debug(`applying developer->system role transformation for ${provider}/${modelId}`);
+    const originalStreamFn = agent.streamFn ?? streamSimple;
+    agent.streamFn = (model, context, options) => {
+      const transformedContext = {
+        ...context,
+        messages: transformDeveloperRole(
+          context.messages as Array<{ role: string; content: unknown }>,
+        ),
+      };
+      return originalStreamFn(model, transformedContext as typeof context, options);
+    };
+  }
+}
+
+/**
+ * Wrap a streamFn to inject `thinking: { type: "disabled" }` into the Anthropic
+ * API payload for reasoning-capable models when thinking is not enabled.
+ *
+ * Without this, some Anthropic-compatible providers (e.g. Synthetic/Kimi K2.5)
+ * default to emitting thinking as plain text in regular content blocks when the
+ * thinking parameter is absent, which leaks into user-visible output.
+ */
+export function createThinkingDisabledWrapper(baseStreamFn: StreamFn, model: Model<Api>): StreamFn {
+  if (!model.reasoning || model.api !== "anthropic-messages") {
+    return baseStreamFn;
+  }
+
+  log.debug("wrapping streamFn with thinking: disabled for anthropic-messages reasoning model");
+
+  return (mdl, context, options) => {
+    const nextOnPayload = (payload: unknown) => {
+      const p = payload as Record<string, unknown>;
+      if (!("thinking" in p)) {
+        p.thinking = { type: "disabled" };
+      }
+      options?.onPayload?.(payload);
+    };
+    return baseStreamFn(mdl, context, {
+      ...options,
+      onPayload: nextOnPayload,
+    });
+  };
+}
+
+/**
+ * Check if a provider requires developer -> system role transformation.
+ * Only returns true for known incompatible providers (DeepSeek).
+ * Default is false (no transformation) to avoid breaking other providers.
+ *
+ * @internal Exported for testing
+ */
+export function needsRoleTransformation(provider: string, modelId: string): boolean {
+  // Only DeepSeek models are known to not support "developer" role
+  if (modelId.toLowerCase().includes("deepseek")) {
+    return true;
+  }
+  // Default: no transformation for unknown providers
+  // This avoids breaking providers that may handle "developer" differently
+  return false;
+}
+
+/**
+ * Transform developer role messages to system role for incompatible providers.
+ *
+ * @internal Exported for testing
+ */
+export function transformDeveloperRole(
+  messages: Array<{ role: string; content: unknown }>,
+): Array<{ role: string; content: unknown }> {
+  return messages.map((msg) => (msg.role === "developer" ? { ...msg, role: "system" } : msg));
 }

@@ -73,6 +73,16 @@ function isMistralModel(params: { provider?: string | null; modelId?: string | n
   return MISTRAL_MODEL_HINTS.some((hint) => modelId.includes(hint));
 }
 
+/**
+ * Detects Claude models by checking if the modelId contains 'claude'.
+ * This catches Claude models accessed via non-Anthropic providers like
+ * github-copilot, openrouter, etc.
+ */
+function isClaudeModel(modelId?: string | null): boolean {
+  if (!modelId) return false;
+  return modelId.toLowerCase().includes("claude");
+}
+
 export function resolveTranscriptPolicy(params: {
   modelApi?: string | null;
   provider?: string | null;
@@ -92,16 +102,17 @@ export function resolveTranscriptPolicy(params: {
     provider,
     modelId,
   });
+  const isClaude = isClaudeModel(modelId);
 
   const needsNonImageSanitize = isGoogle || isAnthropic || isMistral || isOpenRouterGemini;
 
-  const sanitizeToolCallIds = isGoogle || isMistral;
-  const toolCallIdMode: ToolCallIdMode | undefined = isMistral
-    ? "strict9"
-    : sanitizeToolCallIds
-      ? "strict"
-      : undefined;
-  const repairToolUseResultPairing = isGoogle || isAnthropic;
+  // Always sanitize tool call IDs (except OpenAI) to ensure cross-provider compatibility.
+  // Source models (e.g., Ollama/Qwen3) may generate IDs with characters like "|"
+  // that are invalid for other providers (Anthropic, Google, etc.).
+  // Using "strict" mode (alphanumeric only) works universally.
+  // Exception: Mistral requires exactly 9 characters.
+  const toolCallIdMode: ToolCallIdMode | undefined = isMistral ? "strict9" : "strict";
+  const repairToolUseResultPairing = isGoogle || isAnthropic || isClaude;
   const sanitizeThoughtSignatures = isOpenRouterGemini
     ? { allowBase64Only: true, includeCamelCase: true }
     : undefined;
@@ -109,7 +120,7 @@ export function resolveTranscriptPolicy(params: {
 
   return {
     sanitizeMode: isOpenAi ? "images-only" : needsNonImageSanitize ? "full" : "images-only",
-    sanitizeToolCallIds: !isOpenAi && sanitizeToolCallIds,
+    sanitizeToolCallIds: !isOpenAi,
     toolCallIdMode,
     repairToolUseResultPairing: !isOpenAi && repairToolUseResultPairing,
     preserveSignatures: isAntigravityClaudeModel,
@@ -117,7 +128,7 @@ export function resolveTranscriptPolicy(params: {
     normalizeAntigravityThinkingBlocks,
     applyGoogleTurnOrdering: !isOpenAi && isGoogle,
     validateGeminiTurns: !isOpenAi && isGoogle,
-    validateAnthropicTurns: !isOpenAi && isAnthropic,
-    allowSyntheticToolResults: !isOpenAi && (isGoogle || isAnthropic),
+    validateAnthropicTurns: !isOpenAi && (isAnthropic || isClaude),
+    allowSyntheticToolResults: !isOpenAi && (isGoogle || isAnthropic || isClaude),
   };
 }
