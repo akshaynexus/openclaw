@@ -36,7 +36,14 @@ describe("workspace path resolution", () => {
           const result = await readTool?.execute("ws-read", { path: testFile });
           expect(getTextContent(result)).toContain(contents);
         } finally {
-          process.chdir(prevCwd);
+          try {
+            process.chdir(prevCwd);
+          } catch (err) {
+            // Only ignore ENOENT which happens if the previous CWD was deleted during test cleanup
+            if ((err as { code?: string })?.code !== "ENOENT") {
+              throw err;
+            }
+          }
         }
       });
     });
@@ -63,7 +70,13 @@ describe("workspace path resolution", () => {
           const written = await fs.readFile(path.join(workspaceDir, testFile), "utf8");
           expect(written).toBe(contents);
         } finally {
-          process.chdir(prevCwd);
+          try {
+            process.chdir(prevCwd);
+          } catch (err) {
+            if ((err as { code?: string })?.code !== "ENOENT") {
+              throw err;
+            }
+          }
         }
       });
     });
@@ -91,7 +104,13 @@ describe("workspace path resolution", () => {
           const updated = await fs.readFile(path.join(workspaceDir, testFile), "utf8");
           expect(updated).toBe("hello openclaw");
         } finally {
-          process.chdir(prevCwd);
+          try {
+            process.chdir(prevCwd);
+          } catch (err) {
+            if ((err as { code?: string })?.code !== "ENOENT") {
+              throw err;
+            }
+          }
         }
       });
     });

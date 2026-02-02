@@ -41,7 +41,6 @@ const RECOVERABLE_MESSAGE_SNIPPETS = [
   "socket timeout",
   "getaddrinfo",
   "timed out", // grammY uses "timed out" (two words) for long-poll timeouts
-  "timeout", // catch timeout messages not covered by error codes/names
   // Connection-specific patterns (more specific than generic "timeout"/"socket")
   "connection reset",
   "connection refused",

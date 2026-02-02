@@ -21,3 +21,7 @@ export class AllModelsFailedError extends Error {
     this.retryAfterMs = options.retryAfterMs;
   }
 }
+
+export function isAllModelsFailedError(err: unknown): err is AllModelsFailedError {
+  return err instanceof AllModelsFailedError;
+}
