@@ -64,6 +64,7 @@ export type TelegramMediaRef = {
 type TelegramMessageContextOptions = {
   forceWasMentioned?: boolean;
   messageIdOverride?: string;
+  isChannel?: boolean;
 };
 
 type TelegramLogger = {
@@ -150,7 +151,8 @@ export const buildTelegramMessageContext = async ({
     direction: "inbound",
   });
   const chatId = msg.chat.id;
-  const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
+  const isChannel = options?.isChannel === true || msg.chat.type === "channel";
+  const isGroup = !isChannel && (msg.chat.type === "group" || msg.chat.type === "supergroup");
   const messageThreadId = (msg as { message_thread_id?: number }).message_thread_id;
   const isForum = (msg.chat as { is_forum?: boolean }).is_forum === true;
   const threadSpec = resolveTelegramThreadSpec({
@@ -161,14 +163,19 @@ export const buildTelegramMessageContext = async ({
   const resolvedThreadId = threadSpec.scope === "forum" ? threadSpec.id : undefined;
   const replyThreadId = threadSpec.id;
   const { groupConfig, topicConfig } = resolveTelegramGroupConfig(chatId, resolvedThreadId);
-  const peerId = isGroup ? buildTelegramGroupPeerId(chatId, resolvedThreadId) : String(chatId);
+  const peerId = isChannel
+    ? `channel:${chatId}`
+    : isGroup
+      ? buildTelegramGroupPeerId(chatId, resolvedThreadId)
+      : String(chatId);
+  const peerKind = isChannel ? "channel" : isGroup ? "group" : "dm";
   const parentPeer = buildTelegramParentPeer({ isGroup, resolvedThreadId, chatId });
   const route = resolveAgentRoute({
     cfg,
     channel: "telegram",
     accountId: account.accountId,
     peer: {
-      kind: isGroup ? "group" : "dm",
+      kind: peerKind as "group" | "dm",
       id: peerId,
     },
     parentPeer,
@@ -221,7 +228,8 @@ export const buildTelegramMessageContext = async ({
   };
 
   // DM access control (secure defaults): "pairing" (default) / "allowlist" / "open" / "disabled"
-  if (!isGroup) {
+  // Skip DM policy checks for channels (they have their own policy)
+  if (!isGroup && !isChannel) {
     if (dmPolicy === "disabled") {
       return null;
     }
@@ -234,9 +242,8 @@ export const buildTelegramMessageContext = async ({
         senderId: candidate,
         senderUsername,
       });
-      const allowMatchMeta = `matchKey=${allowMatch.matchKey ?? "none"} matchSource=${
-        allowMatch.matchSource ?? "none"
-      }`;
+      const allowMatchMeta = `matchKey=${allowMatch.matchKey ?? "none"} matchSource=${allowMatch.matchSource ?? "none"
+        }`;
       const allowed =
         effectiveDmAllow.hasWildcard || (effectiveDmAllow.hasEntries && allowMatch.allowed);
       if (!allowed) {
@@ -244,11 +251,11 @@ export const buildTelegramMessageContext = async ({
           try {
             const from = msg.from as
               | {
-                  first_name?: string;
-                  last_name?: string;
-                  username?: string;
-                  id?: number;
-                }
+                first_name?: string;
+                last_name?: string;
+                username?: string;
+                id?: number;
+              }
               | undefined;
             const telegramUserId = from?.id ? String(from.id) : candidate;
             const { code, created } = await upsertChannelPairingRequest({
@@ -445,11 +452,11 @@ export const buildTelegramMessageContext = async ({
         limit: historyLimit,
         entry: historyKey
           ? {
-              sender: buildSenderLabel(msg, senderId || chatId),
-              body: rawBody,
-              timestamp: msg.date ? msg.date * 1000 : undefined,
-              messageId: typeof msg.message_id === "number" ? String(msg.message_id) : undefined,
-            }
+            sender: buildSenderLabel(msg, senderId || chatId),
+            body: rawBody,
+            timestamp: msg.date ? msg.date * 1000 : undefined,
+            messageId: typeof msg.message_id === "number" ? String(msg.message_id) : undefined,
+          }
           : null,
       });
       return null;
@@ -464,8 +471,8 @@ export const buildTelegramMessageContext = async ({
       ackReaction &&
       shouldAckReactionGate({
         scope: ackReactionScope,
-        isDirect: !isGroup,
-        isGroup,
+        isDirect: !isGroup && !isChannel,
+        isGroup: isGroup || isChannel,
         isMentionableGroup: isGroup,
         requireMention: Boolean(requireMention),
         canDetectMention,
@@ -485,32 +492,29 @@ export const buildTelegramMessageContext = async ({
   const ackReactionPromise =
     shouldAckReaction() && msg.message_id && reactionApi
       ? withTelegramApiErrorLogging({
-          operation: "setMessageReaction",
-          fn: () => reactionApi(chatId, msg.message_id, [{ type: "emoji", emoji: ackReaction }]),
-        }).then(
-          () => true,
-          (err) => {
-            logVerbose(`telegram react failed for chat ${chatId}: ${String(err)}`);
-            return false;
-          },
-        )
+        operation: "setMessageReaction",
+        fn: () => reactionApi(chatId, msg.message_id, [{ type: "emoji", emoji: ackReaction }]),
+      }).then(
+        () => true,
+        (err) => {
+          logVerbose(`telegram react failed for chat ${chatId}: ${String(err)}`);
+          return false;
+        },
+      )
       : null;
 
   const replyTarget = describeReplyTarget(msg);
   const forwardOrigin = normalizeForwardedContext(msg);
   const replySuffix = replyTarget
     ? replyTarget.kind === "quote"
-      ? `\n\n[Quoting ${replyTarget.sender}${
-          replyTarget.id ? ` id:${replyTarget.id}` : ""
-        }]\n"${replyTarget.body}"\n[/Quoting]`
-      : `\n\n[Replying to ${replyTarget.sender}${
-          replyTarget.id ? ` id:${replyTarget.id}` : ""
-        }]\n${replyTarget.body}\n[/Replying]`
+      ? `\n\n[Quoting ${replyTarget.sender}${replyTarget.id ? ` id:${replyTarget.id}` : ""
+      }]\n"${replyTarget.body}"\n[/Quoting]`
+      : `\n\n[Replying to ${replyTarget.sender}${replyTarget.id ? ` id:${replyTarget.id}` : ""
+      }]\n${replyTarget.body}\n[/Replying]`
     : "";
   const forwardPrefix = forwardOrigin
-    ? `[Forwarded from ${forwardOrigin.from}${
-        forwardOrigin.date ? ` at ${new Date(forwardOrigin.date * 1000).toISOString()}` : ""
-      }]\n`
+    ? `[Forwarded from ${forwardOrigin.from}${forwardOrigin.date ? ` at ${new Date(forwardOrigin.date * 1000).toISOString()}` : ""
+    }]\n`
     : "";
   const groupLabel = isGroup ? buildGroupLabel(msg, chatId, resolvedThreadId) : undefined;
   const senderName = buildSenderName(msg);
@@ -530,7 +534,7 @@ export const buildTelegramMessageContext = async ({
     from: conversationLabel,
     timestamp: msg.date ? msg.date * 1000 : undefined,
     body: `${forwardPrefix}${bodyText}${replySuffix}`,
-    chatType: isGroup ? "group" : "direct",
+    chatType: isChannel ? "channel" : isGroup ? "group" : "direct",
     sender: {
       name: senderName,
       username: senderUsername || undefined,
@@ -575,10 +579,10 @@ export const buildTelegramMessageContext = async ({
     To: `telegram:${chatId}`,
     SessionKey: sessionKey,
     AccountId: route.accountId,
-    ChatType: isGroup ? "group" : "direct",
+    ChatType: isChannel ? "channel" : isGroup ? "group" : "direct",
     ConversationLabel: conversationLabel,
-    GroupSubject: isGroup ? (msg.chat.title ?? undefined) : undefined,
-    GroupSystemPrompt: isGroup ? groupSystemPrompt : undefined,
+    GroupSubject: (isGroup || isChannel) ? (msg.chat.title ?? undefined) : undefined,
+    GroupSystemPrompt: (isGroup || isChannel) ? groupSystemPrompt : undefined,
     SenderName: senderName,
     SenderId: senderId || undefined,
     SenderUsername: senderUsername || undefined,
@@ -634,15 +638,15 @@ export const buildTelegramMessageContext = async ({
     storePath,
     sessionKey: ctxPayload.SessionKey ?? sessionKey,
     ctx: ctxPayload,
-    updateLastRoute: !isGroup
+    updateLastRoute: !isGroup && !isChannel
       ? {
-          sessionKey: route.mainSessionKey,
-          channel: "telegram",
-          to: String(chatId),
-          accountId: route.accountId,
-          // Preserve DM topic threadId for replies (fixes #8891)
-          threadId: dmThreadId != null ? String(dmThreadId) : undefined,
-        }
+        sessionKey: route.mainSessionKey,
+        channel: "telegram",
+        to: String(chatId),
+        accountId: route.accountId,
+        // Preserve DM topic threadId for replies (fixes #8891)
+        threadId: dmThreadId != null ? String(dmThreadId) : undefined,
+      }
       : undefined,
     onRecordError: (err) => {
       logVerbose(`telegram: failed updating session meta: ${String(err)}`);
