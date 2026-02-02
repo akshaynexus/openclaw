@@ -49,7 +49,7 @@ export async function probeTelegram(
 
   try {
     let meRes: Response | null = null;
-    let fetchError: any = null;
+    let fetchError: unknown = null;
 
     // Retry loop for initial connection (handles network/DNS startup races)
     for (let i = 0; i < 3; i++) {
