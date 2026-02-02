@@ -612,10 +612,16 @@ describe("sendMessageTelegram", () => {
       messageThreadId: 1,
     });
 
-    expect(sendMessage).toHaveBeenCalledWith(chatId, "general topic message", {
-      parse_mode: "HTML",
-      // message_thread_id should be omitted for forum general topic (id=1)
-    });
+    expect(sendMessage).toHaveBeenCalledWith(
+      chatId,
+      "general topic message",
+      expect.objectContaining({
+        parse_mode: "HTML",
+      }),
+    );
+
+    const params = sendMessage.mock.calls[0]?.[2] as { message_thread_id?: number } | undefined;
+    expect(params?.message_thread_id).toBeUndefined();
   });
 });
 
