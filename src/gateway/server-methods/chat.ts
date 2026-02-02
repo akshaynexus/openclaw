@@ -368,7 +368,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         return;
       }
     }
-    const { cfg, entry } = loadSessionEntry(p.sessionKey);
+    const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(p.sessionKey);
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
       overrideMs: p.timeoutMs,
@@ -379,7 +379,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     const sendPolicy = resolveSendPolicy({
       cfg,
       entry,
-      sessionKey: p.sessionKey,
+      sessionKey,
       channel: entry?.channel,
       chatType: entry?.chatType,
     });
@@ -404,7 +404,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           broadcast: context.broadcast,
           nodeSendToSession: context.nodeSendToSession,
         },
-        { sessionKey: p.sessionKey, stopReason: "stop" },
+        { sessionKey, stopReason: "stop" },
       );
       respond(true, { ok: true, aborted: res.aborted, runIds: res.runIds });
       return;
@@ -432,7 +432,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       context.chatAbortControllers.set(clientRunId, {
         controller: abortController,
         sessionId: entry?.sessionId ?? clientRunId,
-        sessionKey: p.sessionKey,
+        sessionKey,
         startedAtMs: now,
         expiresAtMs: resolveChatRunExpiresAtMs({ now, timeoutMs }),
       });
@@ -459,7 +459,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         BodyForCommands: commandBody,
         RawBody: parsedMessage,
         CommandBody: commandBody,
-        SessionKey: p.sessionKey,
+        SessionKey: sessionKey,
         Provider: INTERNAL_MESSAGE_CHANNEL,
         Surface: INTERNAL_MESSAGE_CHANNEL,
         OriginatingChannel: INTERNAL_MESSAGE_CHANNEL,
@@ -473,7 +473,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       };
 
       const agentId = resolveSessionAgentId({
-        sessionKey: p.sessionKey,
+        sessionKey,
         config: cfg,
       });
       const { onModelSelected, ...prefixOptions } = createReplyPrefixOptions({
@@ -533,7 +533,7 @@ export const chatHandlers: GatewayRequestHandlers = {
             let message: Record<string, unknown> | undefined;
             if (combinedReply) {
               const { storePath: latestStorePath, entry: latestEntry } = loadSessionEntry(
-                p.sessionKey,
+                sessionKey,
               );
               const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
               const appended = appendAssistantTranscriptMessage({
@@ -562,7 +562,7 @@ export const chatHandlers: GatewayRequestHandlers = {
             broadcastChatFinal({
               context,
               runId: clientRunId,
-              sessionKey: p.sessionKey,
+              sessionKey,
               message,
             });
           }
@@ -587,7 +587,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           broadcastChatError({
             context,
             runId: clientRunId,
-            sessionKey: p.sessionKey,
+            sessionKey,
             errorMessage: String(err),
           });
         })
@@ -632,7 +632,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     };
 
     // Load session to find transcript file
-    const { storePath, entry } = loadSessionEntry(p.sessionKey);
+    const { storePath, entry, canonicalKey: sessionKey } = loadSessionEntry(p.sessionKey);
     const sessionId = entry?.sessionId;
     if (!sessionId || !storePath) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "session not found"));
@@ -687,13 +687,13 @@ export const chatHandlers: GatewayRequestHandlers = {
     // Broadcast to webchat for immediate UI update
     const chatPayload = {
       runId: `inject-${messageId}`,
-      sessionKey: p.sessionKey,
+      sessionKey,
       seq: 0,
       state: "final" as const,
       message: transcriptEntry.message,
     };
     context.broadcast("chat", chatPayload);
-    context.nodeSendToSession(p.sessionKey, "chat", chatPayload);
+    context.nodeSendToSession(sessionKey, "chat", chatPayload);
 
     respond(true, { ok: true, messageId });
   },
