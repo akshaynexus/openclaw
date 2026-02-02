@@ -221,8 +221,13 @@ export async function sendMessageTelegram(
   // Only include these if actually provided to keep API calls clean.
   const messageThreadId =
     opts.messageThreadId != null ? opts.messageThreadId : target.messageThreadId;
+
+  // Detect DM vs forum: positive chatId = DM, negative (especially -100...) = forum
+  const isPrivateChat = /^-?\d+$/.test(chatId) && Number.parseInt(chatId, 10) > 0;
+  const scope = isPrivateChat ? "dm" : "forum";
+
   const threadSpec =
-    messageThreadId != null ? { id: messageThreadId, scope: "forum" as const } : undefined;
+    messageThreadId != null ? { id: messageThreadId, scope: scope as const } : undefined;
   const threadIdParams = buildTelegramThreadParams(threadSpec);
   const threadParams: Record<string, unknown> = threadIdParams ? { ...threadIdParams } : {};
   const quoteText = opts.quoteText?.trim();
@@ -696,8 +701,13 @@ export async function sendStickerTelegram(
 
   const messageThreadId =
     opts.messageThreadId != null ? opts.messageThreadId : target.messageThreadId;
+
+  // Detect DM vs forum: positive chatId = DM, negative (especially -100...) = forum
+  const isPrivateChat = /^-?\d+$/.test(chatId) && Number.parseInt(chatId, 10) > 0;
+  const scope = isPrivateChat ? "dm" : "forum";
+
   const threadSpec =
-    messageThreadId != null ? { id: messageThreadId, scope: "forum" as const } : undefined;
+    messageThreadId != null ? { id: messageThreadId, scope: scope as const } : undefined;
   const threadIdParams = buildTelegramThreadParams(threadSpec);
   const threadParams: Record<string, number> = threadIdParams ? { ...threadIdParams } : {};
   if (opts.replyToMessageId != null) {
