@@ -44,7 +44,11 @@ describe("workspace path resolution", () => {
           const result = await readTool?.execute("ws-read", { path: testFile });
           expect(getTextContent(result)).toContain(contents);
         } finally {
-          cwdSpy.mockRestore();
+          try {
+            process.chdir(prevCwd);
+          } catch {
+            // Ignore error if we can't switch back (e.g. if prevCwd invalid)
+          }
         }
       });
     });
@@ -70,7 +74,11 @@ describe("workspace path resolution", () => {
           const written = await fs.readFile(path.join(workspaceDir, testFile), "utf8");
           expect(written).toBe(contents);
         } finally {
-          cwdSpy.mockRestore();
+          try {
+            process.chdir(prevCwd);
+          } catch {
+            // Ignore error if we can't switch back
+          }
         }
       });
     });
@@ -97,7 +105,11 @@ describe("workspace path resolution", () => {
           const updated = await fs.readFile(path.join(workspaceDir, testFile), "utf8");
           expect(updated).toBe("hello openclaw");
         } finally {
-          cwdSpy.mockRestore();
+          try {
+            process.chdir(prevCwd);
+          } catch {
+            // Ignore error if we can't switch back
+          }
         }
       });
     });
