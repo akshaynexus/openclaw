@@ -300,10 +300,12 @@ export async function runWithModelFallback<T>(params: {
       // Proactive quota check for Antigravity - they don't return 429, just hang
       if (candidate.provider === "google-antigravity") {
         let allProfilesExhausted = true;
+        let quotaCheckAttempted = false;
         for (const profileId of profileIds) {
           if (isProfileInCooldown(authStore, profileId, candidate.model)) continue;
           const profile = authStore.profiles[profileId];
           if (!profile || !("access" in profile) || !profile.access) continue;
+          quotaCheckAttempted = true;
           try {
             const quotaResult = await isModelQuotaExhausted(
               profileId,
@@ -320,7 +322,7 @@ export async function runWithModelFallback<T>(params: {
             break;
           }
         }
-        if (allProfilesExhausted) {
+        if (allProfilesExhausted && quotaCheckAttempted) {
           attempts.push({
             provider: candidate.provider,
             model: candidate.model,
