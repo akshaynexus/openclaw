@@ -26,7 +26,7 @@ import {
 } from "../protocol/index.js";
 import {
   archiveFileOnDisk,
-  listSessionsFromStore,
+  listSessionsFromStoreAsync,
   loadCombinedSessionStoreForGateway,
   loadSessionEntry,
   readSessionPreviewItemsFromTranscript,
@@ -40,7 +40,8 @@ import { applySessionsPatchToStore } from "../sessions-patch.js";
 import { resolveSessionKeyFromResolveParams } from "../sessions-resolve.js";
 
 export const sessionsHandlers: GatewayRequestHandlers = {
-  "sessions.list": ({ params, respond }) => {
+  // Issue #6628: Use async version to avoid blocking event loop during file I/O
+  "sessions.list": async ({ params, respond }) => {
     if (!validateSessionsListParams(params)) {
       respond(
         false,
@@ -55,7 +56,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const p = params;
     const cfg = loadConfig();
     const { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
-    const result = listSessionsFromStore({
+    const result = await listSessionsFromStoreAsync({
       cfg,
       storePath,
       store,
