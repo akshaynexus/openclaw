@@ -503,6 +503,7 @@ export async function runEmbeddedPiAgent(
                 reason: promptFailoverReason,
                 cfg: params.config,
                 agentDir: params.agentDir,
+                modelId,
               });
             }
             if (
@@ -591,6 +592,7 @@ export async function runEmbeddedPiAgent(
                 reason,
                 cfg: params.config,
                 agentDir: params.agentDir,
+                modelId,
               });
               if (timedOut && !isProbeSession) {
                 log.warn(
