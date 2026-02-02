@@ -71,10 +71,23 @@ async function main() {
   setConsoleTimestampPrefix(true);
   setVerbose(hasFlag(args, "--verbose"));
 
+  // Helper to extract error cause (same pattern as infra/unhandled-rejections.ts)
+  const getErrorCause = (err: unknown): unknown => {
+    if (!err || typeof err !== "object") {
+      return undefined;
+    }
+    return (err as { cause?: unknown }).cause;
+  };
+
   // Helper to check for broken pipe errors (EPIPE/EIO)
+  // Uses cause chain extraction to handle wrapped errors (e.g., undici-style { cause: { code: "EPIPE" } })
   const isBrokenPipe = (err: unknown) => {
-    const code = extractErrorCode(err);
-    return code === "EPIPE" || code === "EIO";
+    const direct = extractErrorCode(err);
+    if (direct === "EPIPE" || direct === "EIO") {
+      return true;
+    }
+    const causeCode = extractErrorCode(getErrorCause(err));
+    return causeCode === "EPIPE" || causeCode === "EIO";
   };
 
   // Handle stream errors - ignore EPIPE/EIO, re-throw others
