@@ -880,15 +880,18 @@ export async function listSessionsFromStoreAsync(params: {
       const batch = sessions.slice(i, i + MAX_CONCURRENT_SESSION_READS);
       const batchResults = await Promise.all(
         batch.map(async (s) => {
-          const { entry, ...rest } = s;
+          const { entry, key, ...rest } = s;
           let derivedTitle: string | undefined;
           let lastMessagePreview: string | undefined;
           if (entry?.sessionId) {
+            // Extract agentId from session key for per-agent transcript resolution
+            const sessionAgentId = parseAgentSessionKey(key)?.agentId;
             if (includeDerivedTitles) {
               const firstUserMsg = await readFirstUserMessageFromTranscriptAsync(
                 entry.sessionId,
                 storePath,
                 entry.sessionFile,
+                sessionAgentId,
               );
               derivedTitle = deriveSessionTitle(entry, firstUserMsg);
             }
@@ -897,13 +900,14 @@ export async function listSessionsFromStoreAsync(params: {
                 entry.sessionId,
                 storePath,
                 entry.sessionFile,
+                sessionAgentId,
               );
               if (lastMsg) {
                 lastMessagePreview = lastMsg;
               }
             }
           }
-          return { ...rest, derivedTitle, lastMessagePreview } satisfies GatewaySessionRow;
+          return { key, ...rest, derivedTitle, lastMessagePreview } satisfies GatewaySessionRow;
         }),
       );
       finalSessions.push(...batchResults);
