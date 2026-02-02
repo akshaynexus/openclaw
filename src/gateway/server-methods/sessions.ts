@@ -245,13 +245,11 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const next = await updateSessionStore(storePath, (store) => {
       const primaryKey = target.storeKeys[0] ?? key;
       const existingKey = target.storeKeys.find((candidate) => store[candidate]);
-      if (existingKey && existingKey !== primaryKey && !store[primaryKey]) {
-        store[primaryKey] = store[existingKey];
-        delete store[existingKey];
-      }
-      const entry = store[primaryKey];
 
-      // Snapshot the previous entry before overwriting
+      // Snapshot the previous entry BEFORE alias migration or overwriting,
+      // using whichever key currently holds the session.
+      const previousKey = existingKey ?? primaryKey;
+      const entry = store[previousKey];
       if (entry) {
         previousSessionEntry = { ...entry };
         // Resolve the transcript file path for the previous session
@@ -261,6 +259,11 @@ export const sessionsHandlers: GatewayRequestHandlers = {
           (entry as Record<string, unknown>).sessionFile as string | undefined,
         );
         previousSessionFile = candidates.find((c) => fs.existsSync(c));
+      }
+
+      if (existingKey && existingKey !== primaryKey && !store[primaryKey]) {
+        store[primaryKey] = store[existingKey];
+        delete store[existingKey];
       }
 
       const now = Date.now();
@@ -310,7 +313,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       } catch (err) {
         console.error(
           "[sessions.reset] Hook dispatch failed:",
-          err instanceof Error ? err.message : String(err),
+          err instanceof Error ? (err.stack ?? err.message) : String(err),
         );
       }
     })();
