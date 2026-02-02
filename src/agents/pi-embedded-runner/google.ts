@@ -13,7 +13,10 @@ import {
   sanitizeSessionMessagesImages,
 } from "../pi-embedded-helpers.js";
 import { cleanToolSchemaForGemini } from "../pi-tools.schema.js";
-import { sanitizeToolUseResultPairing } from "../session-transcript-repair.js";
+import {
+  sanitizeToolCallInputs,
+  sanitizeToolUseResultPairing,
+} from "../session-transcript-repair.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
 import { log } from "./logger.js";
 import { describeUnknownError } from "./utils.js";
@@ -347,9 +350,10 @@ export async function sanitizeSessionHistory(params: {
   const sanitizedThinking = policy.normalizeAntigravityThinkingBlocks
     ? sanitizeAntigravityThinkingBlocks(sanitizedImages)
     : sanitizedImages;
+  const sanitizedToolCalls = sanitizeToolCallInputs(sanitizedThinking);
   const repairedTools = policy.repairToolUseResultPairing
-    ? sanitizeToolUseResultPairing(sanitizedThinking)
-    : sanitizedThinking;
+    ? sanitizeToolUseResultPairing(sanitizedToolCalls)
+    : sanitizedToolCalls;
 
   // Normalize toolCall arguments to ensure they're always an object.
   // Some models omit `arguments` for tools with no required params,
