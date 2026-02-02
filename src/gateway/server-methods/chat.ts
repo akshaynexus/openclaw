@@ -532,9 +532,8 @@ export const chatHandlers: GatewayRequestHandlers = {
               .trim();
             let message: Record<string, unknown> | undefined;
             if (combinedReply) {
-              const { storePath: latestStorePath, entry: latestEntry } = loadSessionEntry(
-                sessionKey,
-              );
+              const { storePath: latestStorePath, entry: latestEntry } =
+                loadSessionEntry(sessionKey);
               const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
               const appended = appendAssistantTranscriptMessage({
                 message: combinedReply,
