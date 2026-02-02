@@ -36,8 +36,13 @@ const RECOVERABLE_MESSAGE_SNIPPETS = [
   "client network socket disconnected",
   "socket hang up",
   "getaddrinfo",
-  "timeout", // catch timeout messages not covered by error codes/names
   "timed out", // grammY uses "timed out" (two words) for long-poll timeouts
+  // Added for parity with monitor.ts isNetworkRelatedError (issue #6077)
+  "network",
+  "timeout",
+  "socket",
+  "econnreset",
+  "econnrefused",
 ];
 
 function normalizeCode(code?: string): string {
