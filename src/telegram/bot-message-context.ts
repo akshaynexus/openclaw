@@ -175,7 +175,7 @@ export const buildTelegramMessageContext = async ({
     channel: "telegram",
     accountId: account.accountId,
     peer: {
-      kind: peerKind as "group" | "dm",
+      kind: peerKind,
       id: peerId,
     },
     parentPeer,
