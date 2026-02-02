@@ -37,6 +37,7 @@ const RECOVERABLE_MESSAGE_SNIPPETS = [
   "socket hang up",
   "getaddrinfo",
   "timeout", // catch timeout messages not covered by error codes/names
+  "timed out", // grammY uses "timed out" (two words) for long-poll timeouts
 ];
 
 function normalizeCode(code?: string): string {
