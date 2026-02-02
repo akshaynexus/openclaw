@@ -112,13 +112,20 @@ describe("applyExtraParamsToAgent", () => {
         {
           role: "assistant",
           content: [{ type: "toolCall", id: "call_1", name: "test", input: "{}" }],
-        } as any,
+        } as unknown,
       ],
     };
 
     void agent.streamFn?.(model, context, {});
 
-    expect((context.messages[0] as any).reasoning_content).toBeUndefined();
-    expect((seenMessages[0] as any).reasoning_content).toBe("");
+    const getReasoningContent = (value: unknown): unknown => {
+      if (!value || typeof value !== "object") {
+        return undefined;
+      }
+      return (value as { reasoning_content?: unknown }).reasoning_content;
+    };
+
+    expect(getReasoningContent(context.messages[0] as unknown)).toBeUndefined();
+    expect(getReasoningContent(seenMessages[0])).toBe("");
   });
 });
