@@ -38,8 +38,11 @@ describe("workspace path resolution", () => {
         } finally {
           try {
             process.chdir(prevCwd);
-          } catch {
-            // Ignore error if we can't switch back (e.g. if prevCwd invalid)
+          } catch (err) {
+            // Only ignore ENOENT which happens if the previous CWD was deleted during test cleanup
+            if ((err as { code?: string })?.code !== "ENOENT") {
+              throw err;
+            }
           }
         }
       });
@@ -69,8 +72,10 @@ describe("workspace path resolution", () => {
         } finally {
           try {
             process.chdir(prevCwd);
-          } catch {
-            // Ignore error if we can't switch back
+          } catch (err) {
+            if ((err as { code?: string })?.code !== "ENOENT") {
+              throw err;
+            }
           }
         }
       });
@@ -101,8 +106,10 @@ describe("workspace path resolution", () => {
         } finally {
           try {
             process.chdir(prevCwd);
-          } catch {
-            // Ignore error if we can't switch back
+          } catch (err) {
+            if ((err as { code?: string })?.code !== "ENOENT") {
+              throw err;
+            }
           }
         }
       });
