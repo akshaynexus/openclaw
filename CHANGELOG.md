@@ -2,6 +2,13 @@
 
 Docs: https://docs.openclaw.ai
 
+## 2026.2.2
+
+### Fixes
+
+- Security: guard skill installer downloads with SSRF checks (block private/localhost URLs).
+- Media understanding: apply SSRF guardrails to provider fetches; allow private baseUrl overrides explicitly.
+
 ## 2026.2.1
 
 ### Changes
@@ -22,6 +29,8 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Security: guard remote media fetches with SSRF protections (block private/localhost, DNS pinning).
+- Updates: clean stale global install rename dirs and extend gateway update timeouts to avoid npm ENOTEMPTY failures.
 - Plugins: validate plugin/hook install paths and reject traversal-like names.
 - Telegram: add download timeouts for file fetches. (#6914) Thanks @hclsys.
 - Telegram: enforce thread specs for DM vs forum sends. (#6833) Thanks @obviyus.
@@ -50,6 +59,7 @@ Docs: https://docs.openclaw.ai
 - Agents: wire before_tool_call plugin hook into tool execution. (#6570, #6660) Thanks @ryancnelson.
 - Browser: secure Chrome extension relay CDP sessions.
 - Docker: use container port for gateway command instead of host port. (#5110) Thanks @mise42.
+- Docker: start gateway CMD by default for container deployments. (#6635) Thanks @kaizen403.
 - fix(lobster): block arbitrary exec via lobsterPath/cwd injection (GHSA-4mhr-g7xj-cg8j). (#5335) Thanks @vignesh07.
 - Security: sanitize WhatsApp accountId to prevent path traversal. (#4610)
 - Security: restrict MEDIA path extraction to prevent LFI. (#4930)
@@ -72,6 +82,7 @@ Docs: https://docs.openclaw.ai
 - Build: move TypeScript builds to `tsdown` + `tsgo` (faster builds, CI typechecks), update tsconfig target, and clean up lint rules.
 - Build: align npm tar override and bin metadata so the `openclaw` CLI entrypoint is preserved in npm publishes.
 - Docs: add pi/pi-dev docs and update OpenClaw branding + install links.
+- Docker E2E: stabilize gateway readiness, plugin installs/manifests, and cleanup/doctor switch entrypoint checks.
 
 ### Fixes
 
