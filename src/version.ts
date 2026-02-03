@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 declare const __OPENCLAW_VERSION__: string | undefined;
 
@@ -8,7 +10,16 @@ function readVersionFromPackageJson(): string | null {
     const pkg = require("../package.json") as { version?: string };
     return pkg.version ?? null;
   } catch {
-    return null;
+    try {
+      const self = fileURLToPath(import.meta.url);
+      const root = path.resolve(path.dirname(self), "..");
+      const pkgPath = path.join(root, "package.json");
+      const require = createRequire(import.meta.url);
+      const pkg = require(pkgPath) as { version?: string };
+      return pkg.version ?? null;
+    } catch {
+      return null;
+    }
   }
 }
 
