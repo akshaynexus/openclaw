@@ -218,7 +218,9 @@ function findEarliestCooldownExpiry(
   let earliest: number | null = null;
   for (const id of profileIds) {
     const stats = store.usageStats?.[id];
-    if (!stats) continue;
+    if (!stats) {
+      continue;
+    }
     const unusableUntil = Math.max(stats.cooldownUntil ?? 0, stats.disabledUntil ?? 0);
     if (unusableUntil > 0 && (earliest === null || unusableUntil < earliest)) {
       earliest = unusableUntil;
@@ -289,9 +291,13 @@ export async function runWithModelFallback<T>(params: {
         let allProfilesExhausted = true;
         let quotaCheckAttempted = false;
         for (const profileId of profileIds) {
-          if (isProfileInCooldown(authStore, profileId, candidate.model)) continue;
+          if (isProfileInCooldown(authStore, profileId, candidate.model)) {
+            continue;
+          }
           const profile = authStore.profiles[profileId];
-          if (!profile || !("access" in profile) || !profile.access) continue;
+          if (!profile || !("access" in profile) || !profile.access) {
+            continue;
+          }
           quotaCheckAttempted = true;
           try {
             const quotaResult = await isModelQuotaExhausted(

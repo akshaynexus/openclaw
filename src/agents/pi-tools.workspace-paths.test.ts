@@ -49,6 +49,7 @@ describe("workspace path resolution", () => {
           } catch (err) {
             // Only ignore ENOENT which happens if the previous CWD was deleted during test cleanup
             if ((err as { code?: string })?.code !== "ENOENT") {
+              // eslint-disable-next-line no-unsafe-finally
               throw err;
             }
           }
@@ -81,6 +82,7 @@ describe("workspace path resolution", () => {
             process.chdir(prevCwd);
           } catch (err) {
             if ((err as { code?: string })?.code !== "ENOENT") {
+              // eslint-disable-next-line no-unsafe-finally
               throw err;
             }
           }
@@ -114,6 +116,7 @@ describe("workspace path resolution", () => {
             process.chdir(prevCwd);
           } catch (err) {
             if ((err as { code?: string })?.code !== "ENOENT") {
+              // eslint-disable-next-line no-unsafe-finally
               throw err;
             }
           }
@@ -179,7 +182,7 @@ describe("sandboxed workspace paths", () => {
           sessionKey: "sandbox:test",
           workspaceDir: sandboxDir,
           agentWorkspaceDir: workspaceDir,
-          workspaceAccess: "rw",
+          workspaceAccess: "rw" as const,
           containerName: "openclaw-sbx-test",
           containerWorkdir: "/workspace",
           docker: {

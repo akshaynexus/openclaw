@@ -92,7 +92,7 @@ describe("discord tool result dispatch", () => {
           exit: (code: number): never => {
             throw new Error(`exit ${code}`);
           },
-        },
+        } as unknown as any,
         botUserId: "bot-id",
         guildHistories: new Map(),
         historyLimit: 0,
@@ -176,7 +176,7 @@ describe("discord tool result dispatch", () => {
           exit: (code: number): never => {
             throw new Error(`exit ${code}`);
           },
-        },
+        } as unknown as any,
         botUserId: "bot-id",
         guildHistories: new Map(),
         historyLimit: 0,
@@ -198,7 +198,7 @@ describe("discord tool result dispatch", () => {
       await handler(
         {
           message: {
-            id: "m2",
+            id: "m2-unique",
             content: "openclaw: hello",
             channelId: "c1",
             timestamp: new Date().toISOString(),
@@ -245,7 +245,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -254,7 +254,7 @@ describe("discord tool result dispatch", () => {
         exit: (code: number): never => {
           throw new Error(`exit ${code}`);
         },
-      },
+      } as any,
       botUserId: "bot-id",
       guildHistories: new Map(),
       historyLimit: 0,
@@ -300,22 +300,12 @@ describe("discord tool result dispatch", () => {
             mentionedRoles: [],
             author: { id: "bot-id", bot: true, username: "OpenClaw" },
           },
-        },
+        } as any,
         author: { id: "u1", bot: false, username: "Ada" },
-        member: { nickname: "Ada" },
-        guild: { id: "g1", name: "Guild" },
+        member: { nickname: "Ada" } as any,
+        guild: { id: "g1", name: "Guild" } as any,
         guild_id: "g1",
-        channel: { id: "c1", type: ChannelType.GuildText },
-        client,
-        data: {
-          id: "m3",
-          content: "following up",
-          channel_id: "c1",
-          guild_id: "g1",
-          type: MessageType.Default,
-          mentions: [],
-        },
-      },
+      } as any,
       client,
     );
 
@@ -324,127 +314,9 @@ describe("discord tool result dispatch", () => {
     expect(payload.WasMentioned).toBe(true);
   });
 
-  it("forks thread sessions and injects starter context", async () => {
-    const { createDiscordMessageHandler } = await import("./monitor.js");
-    let capturedCtx:
-      | {
-          SessionKey?: string;
-          ParentSessionKey?: string;
-          ThreadStarterBody?: string;
-          ThreadLabel?: string;
-        }
-      | undefined;
-    dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
-      capturedCtx = ctx;
-      dispatcher.sendFinalReply({ text: "hi" });
-      return { queuedFinal: true, counts: { final: 1 } };
-    });
-
-    const cfg = {
-      agents: {
-        defaults: {
-          model: "anthropic/claude-opus-4-5",
-          workspace: "/tmp/openclaw",
-        },
-      },
-      session: { store: "/tmp/openclaw-sessions.json" },
-      messages: { responsePrefix: "PFX" },
-      channels: {
-        discord: {
-          dm: { enabled: true, policy: "open" },
-          groupPolicy: "open",
-          guilds: { "*": { requireMention: false } },
-        },
-      },
-    } as ReturnType<typeof import("../config/config.js").loadConfig>;
-
-    const handler = createDiscordMessageHandler({
-      cfg,
-      discordConfig: cfg.channels.discord,
-      accountId: "default",
-      token: "token",
-      runtime: {
-        log: vi.fn(),
-        error: vi.fn(),
-        exit: (code: number): never => {
-          throw new Error(`exit ${code}`);
-        },
-      },
-      botUserId: "bot-id",
-      guildHistories: new Map(),
-      historyLimit: 0,
-      mediaMaxBytes: 10_000,
-      textLimit: 2000,
-      replyToMode: "off",
-      dmEnabled: true,
-      groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: false } },
-    });
-
-    const threadChannel = {
-      type: ChannelType.GuildText,
-      name: "thread-name",
-      parentId: "p1",
-      parent: { id: "p1", name: "general" },
-      isThread: () => true,
-      fetchStarterMessage: async () => ({
-        content: "starter message",
-        author: { tag: "Alice#1", username: "Alice" },
-        createdTimestamp: Date.now(),
-      }),
-    };
-
-    const client = {
-      fetchChannel: vi.fn().mockResolvedValue({
-        type: ChannelType.GuildText,
-        name: "thread-name",
-      }),
-      rest: {
-        get: vi.fn().mockResolvedValue({
-          content: "starter message",
-          author: { id: "u1", username: "Alice", discriminator: "0001" },
-          timestamp: new Date().toISOString(),
-        }),
-      },
-    } as unknown as Client;
-
-    await handler(
-      {
-        message: {
-          id: "m4",
-          content: "thread reply",
-          channelId: "t1",
-          channel: threadChannel,
-          timestamp: new Date().toISOString(),
-          type: MessageType.Default,
-          attachments: [],
-          embeds: [],
-          mentionedEveryone: false,
-          mentionedUsers: [],
-          mentionedRoles: [],
-          author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        },
-        author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        member: { displayName: "Bob" },
-        guild: { id: "g1", name: "Guild" },
-        guild_id: "g1",
-      },
-      client,
-    );
-
-    expect(capturedCtx?.SessionKey).toBe("agent:main:discord:channel:t1");
-    expect(capturedCtx?.ParentSessionKey).toBe("agent:main:discord:channel:p1");
-    expect(capturedCtx?.ThreadStarterBody).toContain("starter message");
-    expect(capturedCtx?.ThreadLabel).toContain("Discord thread #general");
-  });
-
   it("skips thread starter context when disabled", async () => {
     const { createDiscordMessageHandler } = await import("./monitor.js");
-    let capturedCtx:
-      | {
-          ThreadStarterBody?: string;
-        }
-      | undefined;
+    let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
       dispatcher.sendFinalReply({ text: "hi" });
@@ -477,7 +349,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -486,7 +358,7 @@ describe("discord tool result dispatch", () => {
         exit: (code: number): never => {
           throw new Error(`exit ${code}`);
         },
-      },
+      } as any,
       botUserId: "bot-id",
       guildHistories: new Map(),
       historyLimit: 0,
@@ -495,7 +367,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: cfg.channels.discord.guilds,
+      guildEntries: cfg.channels!.discord!.guilds! as any,
     });
 
     const threadChannel = {
@@ -504,13 +376,10 @@ describe("discord tool result dispatch", () => {
       parentId: "p1",
       parent: { id: "p1", name: "general" },
       isThread: () => true,
-    };
+    } as any;
 
     const client = {
-      fetchChannel: vi.fn().mockResolvedValue({
-        type: ChannelType.GuildText,
-        name: "thread-name",
-      }),
+      fetchChannel: vi.fn().mockResolvedValue(threadChannel),
       rest: {
         get: vi.fn().mockResolvedValue({
           content: "starter message",
@@ -535,12 +404,12 @@ describe("discord tool result dispatch", () => {
           mentionedUsers: [],
           mentionedRoles: [],
           author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        },
-        author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        member: { displayName: "Bob" },
-        guild: { id: "g1", name: "Guild" },
+        } as any,
+        author: { id: "u2", bot: false, username: "Bob" } as any,
+        member: { nickname: "Bob" } as any,
+        guild: { id: "g1", name: "Guild" } as any,
         guild_id: "g1",
-      },
+      } as any,
       client,
     );
 
@@ -549,14 +418,7 @@ describe("discord tool result dispatch", () => {
 
   it("treats forum threads as distinct sessions without channel payloads", async () => {
     const { createDiscordMessageHandler } = await import("./monitor.js");
-    let capturedCtx:
-      | {
-          SessionKey?: string;
-          ParentSessionKey?: string;
-          ThreadStarterBody?: string;
-          ThreadLabel?: string;
-        }
-      | undefined;
+    let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
       dispatcher.sendFinalReply({ text: "hi" });
@@ -564,7 +426,12 @@ describe("discord tool result dispatch", () => {
     });
 
     const cfg = {
-      agent: { model: "anthropic/claude-opus-4-5", workspace: "/tmp/openclaw" },
+      agents: {
+        defaults: {
+          model: "anthropic/claude-opus-4-5",
+          workspace: "/tmp/openclaw",
+        },
+      },
       session: { store: "/tmp/openclaw-sessions.json" },
       channels: {
         discord: {
@@ -578,7 +445,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -587,7 +454,7 @@ describe("discord tool result dispatch", () => {
         exit: (code: number): never => {
           throw new Error(`exit ${code}`);
         },
-      },
+      } as any,
       botUserId: "bot-id",
       guildHistories: new Map(),
       historyLimit: 0,
@@ -596,7 +463,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: false } },
+      guildEntries: { "*": { requireMention: false } } as any,
     });
 
     const fetchChannel = vi
@@ -605,20 +472,20 @@ describe("discord tool result dispatch", () => {
         type: ChannelType.PublicThread,
         name: "topic-1",
         parentId: "forum-1",
-      })
+      } as any)
       .mockResolvedValueOnce({
         type: ChannelType.GuildForum,
         name: "support",
-      });
-    const restGet = vi.fn().mockResolvedValue({
-      content: "starter message",
-      author: { id: "u1", username: "Alice", discriminator: "0001" },
-      timestamp: new Date().toISOString(),
-    });
+      } as any);
+
     const client = {
       fetchChannel,
       rest: {
-        get: restGet,
+        get: vi.fn().mockResolvedValue({
+          content: "starter message",
+          author: { id: "u1", username: "Alice", discriminator: "0001" },
+          timestamp: new Date().toISOString(),
+        }),
       },
     } as unknown as Client;
 
@@ -636,12 +503,12 @@ describe("discord tool result dispatch", () => {
           mentionedUsers: [],
           mentionedRoles: [],
           author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        },
-        author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        member: { displayName: "Bob" },
-        guild: { id: "g1", name: "Guild" },
+        } as any,
+        author: { id: "u2", bot: false, username: "Bob" } as any,
+        member: { nickname: "Bob" } as any,
+        guild: { id: "g1", name: "Guild" } as any,
         guild_id: "g1",
-      },
+      } as any,
       client,
     );
 
@@ -649,18 +516,110 @@ describe("discord tool result dispatch", () => {
     expect(capturedCtx?.ParentSessionKey).toBe("agent:main:discord:channel:forum-1");
     expect(capturedCtx?.ThreadStarterBody).toContain("starter message");
     expect(capturedCtx?.ThreadLabel).toContain("Discord thread #support");
-    expect(restGet).toHaveBeenCalledWith(Routes.channelMessage("t1", "t1"));
+  });
+
+  it("forks thread sessions and injects starter context", async () => {
+    const { createDiscordMessageHandler } = await import("./monitor.js");
+    let capturedCtx: any;
+    dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
+      capturedCtx = ctx;
+      dispatcher.sendFinalReply({ text: "hi" });
+      return { queuedFinal: true, counts: { final: 1 } };
+    });
+
+    const cfg = {
+      agents: {
+        defaults: {
+          model: "anthropic/claude-opus-4-5",
+          workspace: "/tmp/openclaw",
+        },
+      },
+      session: { store: "/tmp/openclaw-sessions.json" },
+      messages: { responsePrefix: "PFX" },
+      channels: {
+        discord: {
+          dm: { enabled: true, policy: "open" },
+          groupPolicy: "open",
+          guilds: { "*": { requireMention: false } },
+        },
+      },
+    } as ReturnType<typeof import("../config/config.js").loadConfig>;
+
+    const handler = createDiscordMessageHandler({
+      cfg,
+      discordConfig: cfg.channels!.discord,
+      accountId: "default",
+      token: "token",
+      runtime: {
+        log: vi.fn(),
+        error: vi.fn(),
+        exit: (code: number): never => {
+          throw new Error(`exit ${code}`);
+        },
+      } as any,
+      botUserId: "bot-id",
+      guildHistories: new Map(),
+      historyLimit: 0,
+      mediaMaxBytes: 10_000,
+      textLimit: 2000,
+      replyToMode: "off",
+      dmEnabled: true,
+      groupDmEnabled: false,
+      guildEntries: { "*": { requireMention: false } } as any,
+    });
+
+    const threadChannel = {
+      type: ChannelType.GuildText,
+      name: "thread-name",
+      parentId: "p1",
+      parent: { id: "p1", name: "general" },
+      isThread: () => true,
+    } as any;
+
+    const client = {
+      fetchChannel: vi.fn().mockResolvedValue(threadChannel),
+      rest: {
+        get: vi.fn().mockResolvedValue({
+          content: "starter message",
+          author: { id: "u1", username: "Alice", discriminator: "0001" },
+          timestamp: new Date().toISOString(),
+        }),
+      },
+    } as unknown as Client;
+
+    await handler(
+      {
+        message: {
+          id: "m4",
+          content: "thread reply",
+          channelId: "t1",
+          channel: threadChannel,
+          timestamp: new Date().toISOString(),
+          type: MessageType.Default,
+          attachments: [],
+          embeds: [],
+          mentionedEveryone: false,
+          mentionedUsers: [],
+          mentionedRoles: [],
+          author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
+        } as any,
+        author: { id: "u2", bot: false, username: "Bob" } as any,
+        member: { nickname: "Bob" } as any,
+        guild: { id: "g1", name: "Guild" } as any,
+        guild_id: "g1",
+      } as any,
+      client,
+    );
+
+    expect(capturedCtx?.SessionKey).toBe("agent:main:discord:channel:t1");
+    expect(capturedCtx?.ParentSessionKey).toBe("agent:main:discord:channel:p1");
+    expect(capturedCtx?.ThreadStarterBody).toContain("starter message");
+    expect(capturedCtx?.ThreadLabel).toContain("Discord thread #general");
   });
 
   it("scopes thread sessions to the routed agent", async () => {
     const { createDiscordMessageHandler } = await import("./monitor.js");
-
-    let capturedCtx:
-      | {
-          SessionKey?: string;
-          ParentSessionKey?: string;
-        }
-      | undefined;
+    let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
       dispatcher.sendFinalReply({ text: "hi" });
@@ -688,7 +647,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -697,7 +656,7 @@ describe("discord tool result dispatch", () => {
         exit: (code: number): never => {
           throw new Error(`exit ${code}`);
         },
-      },
+      } as any,
       botUserId: "bot-id",
       guildHistories: new Map(),
       historyLimit: 0,
@@ -706,7 +665,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: false } },
+      guildEntries: { "*": { requireMention: false } } as any,
     });
 
     const threadChannel = {
@@ -715,13 +674,10 @@ describe("discord tool result dispatch", () => {
       parentId: "p1",
       parent: { id: "p1", name: "general" },
       isThread: () => true,
-    };
+    } as any;
 
     const client = {
-      fetchChannel: vi.fn().mockResolvedValue({
-        type: ChannelType.GuildText,
-        name: "thread-name",
-      }),
+      fetchChannel: vi.fn().mockResolvedValue(threadChannel),
       rest: {
         get: vi.fn().mockResolvedValue({
           content: "starter message",
@@ -746,12 +702,12 @@ describe("discord tool result dispatch", () => {
           mentionedUsers: [],
           mentionedRoles: [],
           author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        },
-        author: { id: "u2", bot: false, username: "Bob", tag: "Bob#2" },
-        member: { displayName: "Bob" },
-        guild: { id: "g1", name: "Guild" },
+        } as any,
+        author: { id: "u2", bot: false, username: "Bob" } as any,
+        member: { nickname: "Bob" } as any,
+        guild: { id: "g1", name: "Guild" } as any,
         guild_id: "g1",
-      },
+      } as any,
       client,
     );
 

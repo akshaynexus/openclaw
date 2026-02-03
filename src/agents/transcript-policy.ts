@@ -79,7 +79,9 @@ function isMistralModel(params: { provider?: string | null; modelId?: string | n
  * github-copilot, openrouter, etc.
  */
 function isClaudeModel(modelId?: string | null): boolean {
-  if (!modelId) return false;
+  if (!modelId) {
+    return false;
+  }
   return modelId.toLowerCase().includes("claude");
 }
 

@@ -76,7 +76,7 @@ export async function markAuthProfileUsed(params: {
       };
       // Clear model-specific cooldown if modelId provided
       if (modelId && freshStore.usageStats[profileId].modelStats?.[modelId]) {
-        freshStore.usageStats[profileId].modelStats![modelId] = {
+        freshStore.usageStats[profileId].modelStats[modelId] = {
           errorCount: 0,
           cooldownUntil: undefined,
           failureCounts: undefined,
@@ -105,7 +105,7 @@ export async function markAuthProfileUsed(params: {
   };
   // Clear model-specific cooldown if modelId provided
   if (modelId && store.usageStats[profileId].modelStats?.[modelId]) {
-    store.usageStats[profileId].modelStats![modelId] = {
+    store.usageStats[profileId].modelStats[modelId] = {
       errorCount: 0,
       cooldownUntil: undefined,
       failureCounts: undefined,
@@ -317,8 +317,8 @@ export async function markAuthProfileFailure(params: {
         // Model-level tracking for rate_limit/timeout
         freshStore.usageStats[profileId].modelStats =
           freshStore.usageStats[profileId].modelStats ?? {};
-        const existingModelStats = freshStore.usageStats[profileId].modelStats![modelId!] ?? {};
-        freshStore.usageStats[profileId].modelStats![modelId!] = computeNextModelUsageStats({
+        const existingModelStats = freshStore.usageStats[profileId].modelStats[modelId] ?? {};
+        freshStore.usageStats[profileId].modelStats[modelId] = computeNextModelUsageStats({
           existing: existingModelStats,
           now,
           reason,
@@ -360,8 +360,8 @@ export async function markAuthProfileFailure(params: {
   if (useModelLevel) {
     // Model-level tracking for rate_limit/timeout
     store.usageStats[profileId].modelStats = store.usageStats[profileId].modelStats ?? {};
-    const existingModelStats = store.usageStats[profileId].modelStats![modelId!] ?? {};
-    store.usageStats[profileId].modelStats![modelId!] = computeNextModelUsageStats({
+    const existingModelStats = store.usageStats[profileId].modelStats[modelId] ?? {};
+    store.usageStats[profileId].modelStats[modelId] = computeNextModelUsageStats({
       existing: existingModelStats,
       now,
       reason,
