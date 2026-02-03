@@ -45,6 +45,7 @@ function renderTelegramHtml(ir: MarkdownIR): string {
       strikethrough: { open: "<s>", close: "</s>" },
       code: { open: "<code>", close: "</code>" },
       code_block: { open: "<pre><code>", close: "</code></pre>" },
+      thought: { open: "<blockquote expandable>", close: "</blockquote>" },
     },
     escapeText: escapeHtml,
     buildLink: buildTelegramLink,

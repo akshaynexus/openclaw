@@ -24,7 +24,14 @@ type MarkdownToken = {
   attrGet?: (name: string) => string | null;
 };
 
-export type MarkdownStyle = "bold" | "italic" | "strikethrough" | "code" | "code_block" | "spoiler";
+export type MarkdownStyle =
+  | "bold"
+  | "italic"
+  | "strikethrough"
+  | "code"
+  | "code_block"
+  | "spoiler"
+  | "thought";
 
 export type MarkdownStyleSpan = {
   start: number;
@@ -169,6 +176,57 @@ function injectSpoilersIntoInline(tokens: MarkdownToken[]): MarkdownToken[] {
         type: state.spoilerOpen ? "spoiler_open" : "spoiler_close",
       });
       index = next + 2;
+    }
+  }
+
+  return result;
+}
+
+function applyThinkingTokens(tokens: MarkdownToken[]): void {
+  for (const token of tokens) {
+    if (token.children && token.children.length > 0) {
+      token.children = injectThinkingIntoInline(token.children);
+    }
+  }
+}
+
+function injectThinkingIntoInline(tokens: MarkdownToken[]): MarkdownToken[] {
+  const result: MarkdownToken[] = [];
+  const state = { thoughtOpen: false };
+  const thinkingRe = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\b[^<>]*>/gi;
+
+  for (const token of tokens) {
+    if (token.type !== "text") {
+      result.push(token);
+      continue;
+    }
+
+    const content = token.content ?? "";
+    if (!thinkingRe.test(content)) {
+      result.push(token);
+      continue;
+    }
+
+    thinkingRe.lastIndex = 0;
+    let index = 0;
+    for (const match of content.matchAll(thinkingRe)) {
+      const next = match.index ?? 0;
+      if (next > index) {
+        result.push(createTextToken(token, content.slice(index, next)));
+      }
+      const isClose = match[1] === "/";
+      if (isClose && state.thoughtOpen) {
+        state.thoughtOpen = false;
+        result.push({ type: "thought_close" });
+      } else if (!isClose && !state.thoughtOpen) {
+        state.thoughtOpen = true;
+        result.push({ type: "thought_open" });
+      }
+      index = next + match[0].length;
+    }
+
+    if (index < content.length) {
+      result.push(createTextToken(token, content.slice(index)));
     }
   }
 
@@ -544,6 +602,12 @@ function renderTokens(tokens: MarkdownToken[], state: RenderState): void {
           closeStyle(state, "spoiler");
         }
         break;
+      case "thought_open":
+        openStyle(state, "thought");
+        break;
+      case "thought_close":
+        closeStyle(state, "thought");
+        break;
       case "link_open": {
         const href = getAttr(token, "href") ?? "";
         const target = resolveRenderTarget(state);
@@ -800,6 +864,7 @@ export function markdownToIRWithMeta(
   if (options.enableSpoilers) {
     applySpoilerTokens(tokens as MarkdownToken[]);
   }
+  applyThinkingTokens(tokens as MarkdownToken[]);
 
   const tableMode = options.tableMode ?? "off";
 
