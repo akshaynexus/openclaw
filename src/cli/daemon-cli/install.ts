@@ -78,7 +78,8 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
     return;
   }
   if (loaded) {
-    if (!opts.force) {
+    const forced = Boolean(opts.force) || process.argv.includes("--force");
+    if (!forced) {
       emit({
         ok: true,
         result: "already-installed",
