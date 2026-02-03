@@ -46,6 +46,14 @@ vi.mock("../pairing/pairing-store.js", () => ({
   upsertChannelPairingRequest,
 }));
 
+vi.mock("../agents/model-catalog.js", () => ({
+  loadModelCatalog: vi.fn(async () => []),
+}));
+
+vi.mock("../auto-reply/reply/directive-handling.model-picker.js", () => ({
+  buildModelPickerItems: vi.fn(() => []),
+}));
+
 const useSpy = vi.fn();
 const middlewareUseSpy = vi.fn();
 const onSpy = vi.fn();
@@ -276,8 +284,12 @@ describe("createTelegramBot", () => {
     });
 
     createTelegramBot({ token: "tok" });
-    expect(commandSpy).toHaveBeenCalled();
-    const handler = commandSpy.mock.calls[0][1] as (ctx: Record<string, unknown>) => Promise<void>;
+    const handler = commandSpy.mock.calls.find((call) => call[0] === "status")?.[1] as
+      | ((ctx: Record<string, unknown>) => Promise<void>)
+      | undefined;
+    if (!handler) {
+      throw new Error("status command handler missing");
+    }
 
     await handler({
       message: {
@@ -294,6 +306,7 @@ describe("createTelegramBot", () => {
         message_thread_id: 99,
       },
       match: "",
+      me: { username: "openclaw_bot" },
     });
 
     expect(sendMessageSpy).toHaveBeenCalledWith(

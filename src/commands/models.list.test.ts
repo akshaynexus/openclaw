@@ -40,10 +40,13 @@ vi.mock("../agents/auth-profiles.js", () => ({
   resolveProfileUnusableUntilForDisplay,
 }));
 
+const hasAuthForProvider = vi.fn().mockReturnValue(true);
+
 vi.mock("../agents/model-auth.js", () => ({
   resolveEnvApiKey,
   resolveAwsSdkEnvVarName,
   getCustomProviderApiKey,
+  hasAuthForProvider,
 }));
 
 vi.mock("@mariozechner/pi-coding-agent", () => ({
@@ -274,6 +277,7 @@ describe("models list/status", () => {
     modelRegistryState.available = [];
 
     const { modelsListCommand } = await import("./models/list.js");
+    hasAuthForProvider.mockReturnValue(false);
     await modelsListCommand({ all: true, json: true }, runtime);
 
     expect(runtime.log).toHaveBeenCalledTimes(1);

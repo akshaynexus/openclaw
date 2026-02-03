@@ -114,13 +114,20 @@ describe("processDiscordMessage ack reactions", () => {
   it("sends ack reactions for mention-gated guild messages when mentioned", async () => {
     const ctx = await createBaseContext({
       shouldRequireMention: true,
+      canDetectMention: true,
       effectiveWasMentioned: true,
       sender: { label: "user" },
+      message: {
+        id: "m-ack",
+        channelId: "c1",
+        timestamp: new Date().toISOString(),
+        attachments: [],
+      },
     });
 
     // oxlint-disable-next-line typescript/no-explicit-any
     await processDiscordMessage(ctx as any);
 
-    expect(reactMessageDiscord).toHaveBeenCalledWith("c1", "m1", "👀", { rest: {} });
+    expect(reactMessageDiscord).toHaveBeenCalledWith("c1", "m-ack", "👀", { rest: {} });
   });
 });
