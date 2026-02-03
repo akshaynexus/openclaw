@@ -8,6 +8,7 @@ export type TelegramDraftStream = {
   update: (text: string) => void;
   flush: () => Promise<void>;
   stop: () => void;
+  delete: () => Promise<void>;
 };
 
 export function createTelegramDraftStream(params: {
@@ -33,6 +34,7 @@ export function createTelegramDraftStream(params: {
   let inFlight = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
+  let sentMessageId: number | undefined;
 
   const sendDraft = async (text: string) => {
     if (stopped) {
@@ -43,8 +45,7 @@ export function createTelegramDraftStream(params: {
       return;
     }
     if (trimmed.length > maxChars) {
-      // Drafts are capped at 4096 chars. Stop streaming once we exceed the cap
-      // so we don't keep sending failing updates or a truncated preview.
+      // Drafts are capped. Stop streaming once we exceed the cap.
       stopped = true;
       params.warn?.(`telegram draft stream stopped (draft length ${trimmed.length} > ${maxChars})`);
       return;
@@ -55,8 +56,19 @@ export function createTelegramDraftStream(params: {
     lastSentText = trimmed;
     lastSentAt = Date.now();
     try {
-      await params.api.sendMessageDraft(chatId, draftId, trimmed, threadParams);
+      if (sentMessageId) {
+        await params.api.editMessageText(chatId, sentMessageId, trimmed);
+      } else {
+        const msg = await params.api.sendMessage(chatId, trimmed, {
+          ...threadParams,
+        });
+        sentMessageId = msg.message_id;
+      }
     } catch (err) {
+      const msg = String(err);
+      if (msg.includes("message is not modified")) {
+        return;
+      }
       stopped = true;
       params.warn?.(
         `telegram draft stream failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -135,5 +147,16 @@ export function createTelegramDraftStream(params: {
     `telegram draft stream ready (draftId=${draftId}, maxChars=${maxChars}, throttleMs=${throttleMs})`,
   );
 
-  return { update, flush, stop };
+  const deleteMessage = async () => {
+    if (stopped || !sentMessageId) {
+      return;
+    }
+    try {
+      await params.api.deleteMessage(chatId, sentMessageId);
+    } catch (err) {
+      params.warn?.(`telegram draft delete failed: ${String(err)}`);
+    }
+  };
+
+  return { update, flush, stop, delete: deleteMessage };
 }

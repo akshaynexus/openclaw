@@ -85,7 +85,7 @@ export function createPlaceholderController(params: {
     }
   };
 
-  const onTool = async (toolName: string, _args?: Record<string, unknown>) => {
+  const onTool = async (toolName: string, args?: Record<string, unknown>) => {
     if (!config.enabled) {
       return;
     }
@@ -95,7 +95,28 @@ export function createPlaceholderController(params: {
 
     try {
       const display = getToolDisplay(toolName);
-      currentToolText = `${display.emoji} ${display.label}...`;
+      let details = "";
+
+      if (args) {
+        if (toolName === "search_web" && typeof args.query === "string") {
+          details = `: "${args.query.slice(0, 30)}${args.query.length > 30 ? "..." : ""}"`;
+        } else if (
+          (toolName === "read_url_content" || toolName === "open_browser_url") &&
+          typeof args.Url === "string"
+        ) {
+          details = `: ${args.Url.slice(0, 40)}${args.Url.length > 40 ? "..." : ""}`;
+        } else if (toolName === "grep_search" && typeof args.Query === "string") {
+          details = `: "${args.Query.slice(0, 30)}${args.Query.length > 30 ? "..." : ""}"`;
+        } else if (
+          (toolName === "view_file" || toolName === "read_file") &&
+          typeof args.AbsolutePath === "string"
+        ) {
+          const fname = args.AbsolutePath.split("/").pop() ?? args.AbsolutePath;
+          details = `: ${fname}`;
+        }
+      }
+
+      currentToolText = `${display.emoji} ${display.label}${details}...`;
 
       await sender.edit(placeholderMessageId, currentToolText);
       log?.(`Placeholder updated: ${toolName} -> ${currentToolText}`);
