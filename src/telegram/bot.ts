@@ -305,7 +305,6 @@ export function createTelegramBot(opts: TelegramBotOptions) {
       channel: "telegram",
       accountId: account.accountId,
       groupId: String(chatId),
-      configKey: "channels",
     });
   const resolveGroupActivation = (params: {
     chatId: string | number;
@@ -359,7 +358,11 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     }
     const channelKey = String(chatId);
     const channelConfig = channels[channelKey] ?? channels["*"];
-    return { channelConfig: channelConfig as { enabled?: boolean; allowFrom?: Array<string | number>; systemPrompt?: string } | undefined };
+    return {
+      channelConfig: channelConfig as
+        | { enabled?: boolean; allowFrom?: Array<string | number>; systemPrompt?: string }
+        | undefined,
+    };
   };
 
   const processMessage = createTelegramMessageProcessor({
@@ -383,6 +386,25 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     textLimit,
     opts,
     resolveBotTopicsEnabled,
+  });
+
+  registerTelegramHandlers({
+    cfg,
+    accountId: account.accountId,
+    bot,
+    opts,
+    runtime,
+    mediaMaxBytes,
+    telegramCfg,
+    groupAllowFrom,
+    channelAllowFrom,
+    resolveGroupPolicy,
+    resolveChannelPolicy,
+    resolveTelegramGroupConfig,
+    resolveTelegramChannelConfig,
+    shouldSkipUpdate,
+    processMessage,
+    logger,
   });
 
   registerTelegramNativeCommands({
@@ -494,25 +516,6 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     } catch (err) {
       runtime.error?.(danger(`telegram reaction handler failed: ${String(err)}`));
     }
-  });
-
-  registerTelegramHandlers({
-    cfg,
-    accountId: account.accountId,
-    bot,
-    opts,
-    runtime,
-    mediaMaxBytes,
-    telegramCfg,
-    groupAllowFrom,
-    channelAllowFrom,
-    resolveGroupPolicy,
-    resolveChannelPolicy,
-    resolveTelegramGroupConfig,
-    resolveTelegramChannelConfig,
-    shouldSkipUpdate,
-    processMessage,
-    logger,
   });
 
   return bot;
