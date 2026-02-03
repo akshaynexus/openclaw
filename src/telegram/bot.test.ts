@@ -2412,7 +2412,7 @@ describe("createTelegramBot", () => {
 
     expect(replySpy).toHaveBeenCalledTimes(1);
     expect(
-      sendMessageSpy.mock.calls.some(
+      (sendMessageSpy.mock.calls as any[][]).some(
         (call) => call[1] === "You are not authorized to use this command.",
       ),
     ).toBe(false);
