@@ -76,7 +76,7 @@ export async function buildProviderPickerMessage(params: {
     providerMap.set(item.provider, (providerMap.get(item.provider) || 0) + 1);
   }
 
-  const providers = Array.from(providerMap.keys()).sort();
+  const providers = Array.from(providerMap.keys()).toSorted((a, b) => a.localeCompare(b));
 
   const lines = ["<b>Select a Provider</b>", "", "Choose a provider to see available models:"];
   const keyboard = new InlineKeyboard();

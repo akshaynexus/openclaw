@@ -6,15 +6,13 @@ import type { OpenClawConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { resolveUserPath } from "../../utils.js";
 import { loadWebMedia } from "../../web/media.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../auth-profiles.js";
+import { ensureAuthProfileStore } from "../auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { minimaxUnderstandImage } from "../minimax-vlm.js";
 import {
   getApiKeyForModel,
-  getCustomProviderApiKey,
   hasAuthForProvider as hasAuthForProviderBase,
   requireApiKey,
-  resolveEnvApiKey,
 } from "../model-auth.js";
 import { runWithImageModelFallback } from "../model-fallback.js";
 import { resolveConfiguredModelRef } from "../model-selection.js";
