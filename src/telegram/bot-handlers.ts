@@ -1,4 +1,4 @@
-import type { TelegramMessage } from "./bot/types.js";
+import type { TelegramContext, TelegramMessage } from "./bot/types.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 // @ts-nocheck
 import { hasControlCommand } from "../auto-reply/command-detection.js";
@@ -859,7 +859,7 @@ export const registerTelegramHandlers = ({
         ? `telegram:${accountId ?? "default"}:${conversationKey}:${senderId}`
         : null;
       await inboundDebouncer.enqueue({
-        ctx: ctx as any,
+        ctx: ctx as unknown as TelegramContext,
         msg,
         allMedia,
         storeAllowFrom,
@@ -944,10 +944,18 @@ export const registerTelegramHandlers = ({
         }
       }
 
+      // Create a compatible context for media resolution and message processing
+      const getFile = typeof ctx.getFile === "function" ? ctx.getFile.bind(ctx) : async () => ({});
+      const channelCtx: TelegramContext = {
+        message: msg as TelegramMessage,
+        me: ctx.me,
+        getFile,
+      };
+
       // Handle media
       let media: Awaited<ReturnType<typeof resolveMedia>> = null;
       try {
-        media = await resolveMedia(ctx, mediaMaxBytes, opts.token, opts.proxyFetch);
+        media = await resolveMedia(channelCtx, mediaMaxBytes, opts.token, opts.proxyFetch);
       } catch (mediaErr) {
         const errMsg = String(mediaErr);
         if (errMsg.includes("exceeds") && errMsg.includes("MB limit")) {
@@ -973,7 +981,7 @@ export const registerTelegramHandlers = ({
         : [];
 
       // Process the channel post
-      await processMessage(ctx, allMedia, storeAllowFrom, { isChannel: true });
+      await processMessage(channelCtx, allMedia, storeAllowFrom, { isChannel: true });
     } catch (err) {
       runtime.error?.(danger(`channel_post handler failed: ${String(err)}`));
     }

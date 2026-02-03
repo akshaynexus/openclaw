@@ -79,7 +79,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -159,7 +159,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -190,7 +190,7 @@ describe("discord tool result dispatch", () => {
     await handler(
       {
         message: {
-          id: "m2",
+          id: "m2-unique",
           content: "openclaw: hello",
           channelId: "c1",
           timestamp: new Date().toISOString(),
@@ -235,7 +235,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -350,7 +350,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -459,7 +459,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -569,7 +569,7 @@ describe("discord tool result dispatch", () => {
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels.discord,
+      discordConfig: cfg.channels!.discord,
       accountId: "default",
       token: "token",
       runtime: {

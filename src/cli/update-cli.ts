@@ -53,7 +53,6 @@ import { renderTable } from "../terminal/table.js";
 import { theme } from "../terminal/theme.js";
 import { replaceCliName, resolveCliName } from "./cli-name.js";
 import { formatCliCommand } from "./command-format.js";
-import { runDaemonInstall } from "./daemon-cli/runners.js";
 import { formatHelpExamples } from "./help-format.js";
 
 export type UpdateCommandOptions = {

@@ -228,17 +228,25 @@ export function sanitizeToolCallIdsForCloudCodeAssist(
 export function normalizeToolCallArguments(messages: AgentMessage[]): AgentMessage[] {
   let changed = false;
   const out = messages.map((msg) => {
-    if (!msg || typeof msg !== "object") return msg;
+    if (!msg || typeof msg !== "object") {
+      return msg;
+    }
     const role = (msg as { role?: unknown }).role;
-    if (role !== "assistant") return msg;
+    if (role !== "assistant") {
+      return msg;
+    }
 
     const assistant = msg as Extract<AgentMessage, { role: "assistant" }>;
     const content = assistant.content;
-    if (!Array.isArray(content)) return msg;
+    if (!Array.isArray(content)) {
+      return msg;
+    }
 
     let contentChanged = false;
     const nextContent = content.map((block) => {
-      if (!block || typeof block !== "object") return block;
+      if (!block || typeof block !== "object") {
+        return block;
+      }
       const rec = block as { type?: unknown; arguments?: unknown };
       const type = rec.type;
       if (type !== "functionCall" && type !== "toolUse" && type !== "toolCall") {
@@ -252,7 +260,9 @@ export function normalizeToolCallArguments(messages: AgentMessage[]): AgentMessa
       return block;
     });
 
-    if (!contentChanged) return msg;
+    if (!contentChanged) {
+      return msg;
+    }
     changed = true;
     return { ...assistant, content: nextContent as typeof assistant.content };
   });
