@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { findGatewayEntrypoint } from "../commands/doctor-gateway-services.ts";
 import {
   checkShellCompletionStatus,
   ensureCompletionCacheExists,
@@ -14,6 +15,7 @@ import {
   resolveUpdateAvailability,
 } from "../commands/status.update.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
+import { resolveGatewayService } from "../daemon/service.js";
 import { resolveOpenClawPackageRoot } from "../infra/openclaw-root.js";
 import { trimLogTail } from "../infra/restart-sentinel.js";
 import { parseSemver } from "../infra/runtime-guard.js";
@@ -56,6 +58,7 @@ import { theme } from "../terminal/theme.js";
 import { replaceCliName, resolveCliName } from "./cli-name.js";
 import { formatCliCommand } from "./command-format.js";
 import { installCompletion } from "./completion-cli.js";
+import { runDaemonInstall } from "./daemon-cli/runners.js";
 import { formatHelpExamples } from "./help-format.js";
 
 export type UpdateCommandOptions = {
@@ -151,6 +154,67 @@ function normalizeVersionTag(tag: string): string | null {
   }
   const cleaned = trimmed.startsWith("v") ? trimmed.slice(1) : trimmed;
   return parseSemver(cleaned) ? cleaned : null;
+}
+
+function normalizePath(p: string): string {
+  return path.resolve(p).replace(/\\/g, "/");
+}
+
+async function maybeAlignSourceInstall(opts: { root: string; yes?: boolean }) {
+  const service = resolveGatewayService();
+  let command: Awaited<ReturnType<typeof service.readCommand>> | null = null;
+  try {
+    command = await service.readCommand(process.env);
+  } catch {
+    command = null;
+  }
+
+  const currentEntry = findGatewayEntrypoint(command?.programArguments);
+  const expectedEntry = path.join(opts.root, "dist", "index.js");
+
+  if (currentEntry && normalizePath(currentEntry) !== normalizePath(expectedEntry)) {
+    const migrate =
+      opts.yes ||
+      (await confirm({
+        message: stylePromptMessage(
+          `Gateway service points to ${currentEntry}. Migrate to this source build?`,
+        ),
+        initialValue: true,
+      }));
+
+    if (migrate) {
+      const s = spinner();
+      s.start("Migrating gateway service to source...");
+      try {
+        const { runDaemonInstall } = await import("./daemon-cli/runners.js");
+        await runDaemonInstall({ force: true });
+        s.stop(theme.success("Gateway service migrated to source."));
+      } catch (err) {
+        s.stop(theme.error(`Migration failed: ${String(err)}`));
+      }
+    }
+  }
+
+  // Check if 'openclaw' in PATH points to this source
+  try {
+    const whichRes = spawnSync("which", ["openclaw"], { encoding: "utf8" });
+    const whichClaw = whichRes.stdout.trim();
+    const sourceLink = path.join(opts.root, "openclaw.mjs");
+    if (whichClaw && normalizePath(whichClaw) !== normalizePath(sourceLink)) {
+      if (!opts.yes) {
+        defaultRuntime.log("");
+        defaultRuntime.log(
+          theme.info(
+            `Tip: Your \`openclaw\` command points to ${whichClaw}. To use this source build everywhere, add an alias to your shell config:`,
+          ),
+        );
+        defaultRuntime.log(theme.command(`alias openclaw='node ${sourceLink}'`));
+        defaultRuntime.log("");
+      }
+    }
+  } catch {
+    // ignore which failures
+  }
 }
 
 async function readPackageVersion(root: string): Promise<string | null> {
@@ -476,10 +540,10 @@ export async function updateStatusCommand(opts: UpdateStatusOptions): Promise<vo
   const gitLabel =
     update.installKind === "git"
       ? formatGitStatusLine({
-          branch: update.git?.branch ?? null,
-          tag: update.git?.tag ?? null,
-          sha: update.git?.sha ?? null,
-        })
+        branch: update.git?.branch ?? null,
+        tag: update.git?.tag ?? null,
+        sha: update.git?.sha ?? null,
+      })
       : null;
   const updateAvailability = resolveUpdateAvailability(update);
   const updateLine = formatUpdateOneLiner(update).replace(/^Update:\s*/i, "");
@@ -553,7 +617,7 @@ function createUpdateProgress(enabled: boolean): ProgressController {
   if (!enabled) {
     return {
       progress: {},
-      stop: () => {},
+      stop: () => { },
     };
   }
 
@@ -685,7 +749,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   process.noDeprecation = true;
   process.env.NODE_NO_WARNINGS = "1";
   const timeoutMs = opts.timeout ? Number.parseInt(opts.timeout, 10) * 1000 : undefined;
-  const shouldRestart = opts.restart !== false;
+  let shouldRestart = opts.restart !== false;
 
   if (timeoutMs !== undefined && (Number.isNaN(timeoutMs) || timeoutMs <= 0)) {
     defaultRuntime.error("--timeout must be a positive integer (seconds)");
@@ -742,10 +806,10 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     const targetVersion = explicitTag
       ? await resolveTargetVersion(tag, timeoutMs)
       : await resolveNpmChannelTag({ channel, timeoutMs }).then((resolved) => {
-          tag = resolved.tag;
-          fallbackToLatest = channel === "beta" && resolved.tag === "latest";
-          return resolved.version;
-        });
+        tag = resolved.tag;
+        fallbackToLatest = channel === "beta" && resolved.tag === "latest";
+        return resolved.version;
+      });
     const cmp =
       currentVersion && targetVersion ? compareSemverStrings(currentVersion, targetVersion) : null;
     const needsConfirm =
@@ -869,10 +933,10 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     const updateRoot = switchToGit ? resolveGitInstallDir() : root;
     const cloneStep = switchToGit
       ? await ensureGitCheckout({
-          dir: updateRoot,
-          timeoutMs: timeoutMs ?? 20 * 60_000,
-          progress,
-        })
+        dir: updateRoot,
+        timeoutMs: timeoutMs ?? 20 * 60_000,
+        progress,
+      })
       : null;
     if (cloneStep && cloneStep.exitCode !== 0) {
       result = {
@@ -964,10 +1028,10 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     const pluginLogger = opts.json
       ? {}
       : {
-          info: (msg: string) => defaultRuntime.log(msg),
-          warn: (msg: string) => defaultRuntime.log(theme.warn(msg)),
-          error: (msg: string) => defaultRuntime.log(theme.error(msg)),
-        };
+        info: (msg: string) => defaultRuntime.log(msg),
+        warn: (msg: string) => defaultRuntime.log(theme.warn(msg)),
+        error: (msg: string) => defaultRuntime.log(theme.error(msg)),
+      };
 
     if (!opts.json) {
       defaultRuntime.log("");
@@ -1069,18 +1133,24 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       if (!opts.json && restarted) {
         defaultRuntime.log(theme.success("Daemon restarted successfully."));
         defaultRuntime.log("");
-        process.env.OPENCLAW_UPDATE_IN_PROGRESS = "1";
-        try {
-          const { doctorCommand } = await import("../commands/doctor.js");
-          const interactiveDoctor = Boolean(process.stdin.isTTY) && !opts.json && opts.yes !== true;
-          await doctorCommand(defaultRuntime, {
-            nonInteractive: !interactiveDoctor,
-          });
-        } catch (err) {
-          defaultRuntime.log(theme.warn(`Doctor failed: ${String(err)}`));
-        } finally {
-          delete process.env.OPENCLAW_UPDATE_IN_PROGRESS;
-        }
+      }
+
+      await maybeAlignSourceInstall({ root, yes: opts.yes });
+
+      process.env.OPENCLAW_UPDATE_IN_PROGRESS = "1";
+      const doctorArgs = ["doctor", "--non-interactive"];
+      const doctorResult = spawnSync(
+        resolveNodeRunner(),
+        [path.join(root, "openclaw.mjs"), ...doctorArgs],
+        {
+          stdio: "inherit",
+          env: { ...process.env, OPENCLAW_UPDATE_IN_PROGRESS: "1" },
+        },
+      );
+      if (doctorResult.status !== 0) {
+        defaultRuntime.log(
+          theme.warn("Doctor check failed. Run 'openclaw doctor' manually to investigate."),
+        );
       }
     } catch (err) {
       if (!opts.json) {
