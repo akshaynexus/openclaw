@@ -59,7 +59,6 @@ export async function deliverReplies(params: {
     replyToMode,
     textLimit,
     thread,
-    onVoiceRecording,
     linkPreview,
     replyQuoteText,
     editMessageId,
@@ -119,7 +118,7 @@ export async function deliverReplies(params: {
         }
         // Only attach buttons to the first chunk.
         const shouldAttachButtons = i === 0 && replyMarkup;
-        const resultId = await sendTelegramText(bot, chatId, chunk.html, runtime, {
+        await sendTelegramText(bot, chatId, chunk.html, runtime, {
           replyToMessageId:
             replyToId && (replyToMode === "all" || !hasReplied) ? replyToId : undefined,
           editMessageId: i === 0 ? editMessageId : undefined,

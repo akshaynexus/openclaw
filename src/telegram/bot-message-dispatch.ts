@@ -1,5 +1,4 @@
 import { resolveAgentDir } from "../agents/agent-scope.js";
-// @ts-nocheck
 import {
   findModelInCatalog,
   loadModelCatalog,

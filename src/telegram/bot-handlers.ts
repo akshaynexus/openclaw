@@ -651,13 +651,11 @@ export const registerTelegramHandlers = ({
       const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
       const store = loadSessionStore(storePath);
       const session = store[route.sessionKey];
-      const currentModel =
-        session?.providerOverride && session?.modelOverride
-          ? `${session.providerOverride}/${session.modelOverride}`
-          : undefined;
+      const currentProvider = session?.providerOverride;
 
       const message = await buildProviderPickerMessage({
         cfg,
+        currentProvider,
       });
 
       await ctx.reply(message.text, {
