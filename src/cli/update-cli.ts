@@ -1056,9 +1056,15 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       defaultRuntime.log(theme.heading("Restarting service..."));
     }
     try {
-      const { runDaemonRestart } = await import("./daemon-cli.js");
-      const restarted = await runDaemonRestart();
-      if (!opts.json && restarted) {
+      const restartResult = spawnSync(
+        resolveNodeRunner(),
+        [path.join(root, "openclaw.mjs"), "gateway", "restart"],
+        {
+          stdio: "inherit",
+          env: { ...process.env, OPENCLAW_UPDATE_IN_PROGRESS: "1" },
+        },
+      );
+      if (!opts.json && restartResult.status === 0) {
         defaultRuntime.log(theme.success("Daemon restarted successfully."));
         defaultRuntime.log("");
       }
