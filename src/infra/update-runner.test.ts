@@ -120,7 +120,6 @@ describe("runGatewayUpdate", () => {
       "pnpm install": { stdout: "" },
       "pnpm build": { stdout: "" },
       "pnpm ui:build": { stdout: "" },
-      [`git -C ${tempDir} checkout -- dist/control-ui/`]: { stdout: "" },
       "pnpm openclaw doctor --non-interactive": { stdout: "" },
     });
 
