@@ -8,11 +8,14 @@ const PAGE_SIZE = 10;
 export async function buildModelPickerMessage(params: {
   cfg: OpenClawConfig;
   page: number;
+  provider: string;
   currentModel?: string; // e.g. "anthropic/claude-3-5-sonnet-20240620"
   agentId?: string;
 }) {
   const catalog = await loadModelCatalog({ config: params.cfg });
-  const allItems = buildModelPickerItems(catalog);
+  const allItems = buildModelPickerItems(catalog).filter(
+    (item) => item.provider === params.provider,
+  );
 
   // Filter out models that might not be working or irrelevant if needed,
   // but for now show all from the picker logic.
@@ -31,8 +34,8 @@ export async function buildModelPickerMessage(params: {
   const keyboard = new InlineKeyboard();
 
   for (const item of items) {
-    const key = `${item.provider}/${item.id}`;
-    const label = `${item.provider}: ${item.id}`;
+    const key = `${item.provider}/${item.model}`;
+    const label = `${item.provider}: ${item.model}`;
     const isSelected = params.currentModel === key;
     // Mark selected in label
     const btnLabel = isSelected ? `✅ ${label}` : label;
@@ -48,11 +51,40 @@ export async function buildModelPickerMessage(params: {
 
   // Pagination
   if (page > 1) {
-    keyboard.text("« Prev", `model_page:${page - 1}`);
+    keyboard.text("« Prev", `model_page:${params.provider}:${page - 1}`);
   }
   keyboard.text(`${page}/${totalPages}`, "noop");
   if (page < totalPages) {
-    keyboard.text("Next »", `model_page:${page + 1}`);
+    keyboard.text("Next »", `model_page:${params.provider}:${page + 1}`);
+  }
+  keyboard.row().text("« Back to Providers", "prov_list");
+
+  return {
+    text: lines.join("\n"),
+    reply_markup: keyboard,
+  };
+}
+export async function buildProviderPickerMessage(params: {
+  cfg: OpenClawConfig;
+  currentProvider?: string;
+}) {
+  const catalog = await loadModelCatalog({ config: params.cfg });
+  const allItems = buildModelPickerItems(catalog);
+
+  const providerMap = new Map<string, number>();
+  for (const item of allItems) {
+    providerMap.set(item.provider, (providerMap.get(item.provider) || 0) + 1);
+  }
+
+  const providers = Array.from(providerMap.keys()).sort();
+
+  const lines = ["<b>Select a Provider</b>", "", "Choose a provider to see available models:"];
+  const keyboard = new InlineKeyboard();
+
+  for (const provider of providers) {
+    const count = providerMap.get(provider);
+    const label = `${provider} (${count})`;
+    keyboard.text(label, `prov_pick:${provider}`).row();
   }
 
   return {
