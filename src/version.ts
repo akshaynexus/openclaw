@@ -1,14 +1,28 @@
 import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 declare const __OPENCLAW_VERSION__: string | undefined;
 const CORE_PACKAGE_NAME = "openclaw";
 
-const PACKAGE_JSON_CANDIDATES = [
-  "../package.json",
-  "../../package.json",
-  "../../../package.json",
-  "./package.json",
-] as const;
+function readVersionFromPackageJson(): string | null {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../package.json") as { version?: string };
+    return pkg.version ?? null;
+  } catch {
+    try {
+      const self = fileURLToPath(import.meta.url);
+      const root = path.resolve(path.dirname(self), "..");
+      const pkgPath = path.join(root, "package.json");
+      const require = createRequire(import.meta.url);
+      const pkg = require(pkgPath) as { version?: string };
+      return pkg.version ?? null;
+    } catch {
+      return null;
+    }
+  }
+}
 
 const BUILD_INFO_CANDIDATES = [
   "../build-info.json",

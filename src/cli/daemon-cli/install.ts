@@ -13,6 +13,9 @@ import { buildDaemonServiceSnapshot, createNullWriter, emitDaemonActionJson } fr
 import { parsePort } from "./shared.js";
 
 export async function runDaemonInstall(opts: DaemonInstallOptions) {
+  if (process.env.OPENCLAW_DEBUG_INSTALL === "1") {
+    defaultRuntime.log(`[DEBUG] runDaemonInstall force=${opts.force} (${typeof opts.force})`);
+  }
   const json = Boolean(opts.json);
   const warnings: string[] = [];
   const stdout = json ? createNullWriter() : process.stdout;
