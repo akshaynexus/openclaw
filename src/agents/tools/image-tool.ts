@@ -9,7 +9,13 @@ import { loadWebMedia } from "../../web/media.js";
 import { ensureAuthProfileStore, listProfilesForProvider } from "../auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { minimaxUnderstandImage } from "../minimax-vlm.js";
-import { getApiKeyForModel, requireApiKey, resolveEnvApiKey } from "../model-auth.js";
+import {
+  getApiKeyForModel,
+  getCustomProviderApiKey,
+  hasAuthForProvider as hasAuthForProviderBase,
+  requireApiKey,
+  resolveEnvApiKey,
+} from "../model-auth.js";
 import { runWithImageModelFallback } from "../model-fallback.js";
 import { resolveConfiguredModelRef } from "../model-selection.js";
 import { ensureOpenClawModelsJson } from "../models-config.js";
@@ -47,14 +53,15 @@ function resolveDefaultModelRef(cfg?: OpenClawConfig): {
   return { provider: DEFAULT_PROVIDER, model: DEFAULT_MODEL };
 }
 
-function hasAuthForProvider(params: { provider: string; agentDir: string }): boolean {
-  if (resolveEnvApiKey(params.provider)?.apiKey) {
-    return true;
-  }
+function hasAuthForProvider(params: {
+  provider: string;
+  cfg?: OpenClawConfig;
+  agentDir: string;
+}): boolean {
   const store = ensureAuthProfileStore(params.agentDir, {
     allowKeychainPrompt: false,
   });
-  return listProfilesForProvider(store, params.provider).length > 0;
+  return hasAuthForProviderBase(params.provider, params.cfg ?? {}, store);
 }
 
 /**
@@ -81,10 +88,12 @@ export function resolveImageModelConfigForTool(params: {
   const primary = resolveDefaultModelRef(params.cfg);
   const openaiOk = hasAuthForProvider({
     provider: "openai",
+    cfg: params.cfg,
     agentDir: params.agentDir,
   });
   const anthropicOk = hasAuthForProvider({
     provider: "anthropic",
+    cfg: params.cfg,
     agentDir: params.agentDir,
   });
 
@@ -106,6 +115,7 @@ export function resolveImageModelConfigForTool(params: {
   });
   const providerOk = hasAuthForProvider({
     provider: primary.provider,
+    cfg: params.cfg,
     agentDir: params.agentDir,
   });
 

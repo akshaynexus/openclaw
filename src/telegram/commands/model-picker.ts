@@ -12,7 +12,7 @@ export async function buildModelPickerMessage(params: {
   currentModel?: string; // e.g. "anthropic/claude-3-5-sonnet-20240620"
   agentId?: string;
 }) {
-  const catalog = await loadModelCatalog({ config: params.cfg });
+  const catalog = await loadModelCatalog({ config: params.cfg, onlyAvailable: true });
   const allItems = buildModelPickerItems(catalog).filter(
     (item) => item.provider === params.provider,
   );
@@ -68,7 +68,7 @@ export async function buildProviderPickerMessage(params: {
   cfg: OpenClawConfig;
   currentProvider?: string;
 }) {
-  const catalog = await loadModelCatalog({ config: params.cfg });
+  const catalog = await loadModelCatalog({ config: params.cfg, onlyAvailable: true });
   const allItems = buildModelPickerItems(catalog);
 
   const providerMap = new Map<string, number>();

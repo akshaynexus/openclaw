@@ -5,7 +5,12 @@ import { buildModelPickerMessage, buildProviderPickerMessage } from "./model-pic
 
 // Mock the model catalog loader to return a fixed list of models for testing
 vi.mock("../../agents/model-catalog.js", () => ({
-  loadModelCatalog: vi.fn(),
+  loadModelCatalog: vi.fn().mockImplementation(async (params) => {
+    if (params?.onlyAvailable !== true) {
+      throw new Error("loadModelCatalog must be called with onlyAvailable: true");
+    }
+    return []; // The actual data comes from the other mock
+  }),
 }));
 
 // Mock the picker items builder
