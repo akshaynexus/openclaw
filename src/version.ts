@@ -18,7 +18,13 @@ function readVersionFromPackageJson(): string | null {
       const pkg = require(pkgPath) as { version?: string };
       return pkg.version ?? null;
     } catch {
-      return null;
+      try {
+        const require = createRequire(import.meta.url);
+        const pkg = require(path.join(process.cwd(), "package.json")) as { version?: string };
+        return pkg.version ?? null;
+      } catch {
+        return null;
+      }
     }
   }
 }
