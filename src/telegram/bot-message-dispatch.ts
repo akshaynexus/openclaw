@@ -271,6 +271,7 @@ export const dispatchTelegramMessage = async ({
       deliver: async (payload, info) => {
         if (info.kind === "final") {
           await flushDraft();
+          await draftStream?.delete?.();
           draftStream?.stop();
           // Clean up placeholder before sending final reply
           await placeholder.cleanup();
