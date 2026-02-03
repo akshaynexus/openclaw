@@ -635,7 +635,8 @@ export const registerTelegramHandlers = ({
     }
     try {
       const chatId = ctx.chat.id;
-      const messageThreadId = ctx.msg.message_thread_id;
+      const messageThreadId = (ctx.message as { message_thread_id?: number } | undefined)
+        ?.message_thread_id;
       const isGroup = ctx.chat.type === "group" || ctx.chat.type === "supergroup";
       // Identify session
       const route = resolveAgentRoute({
