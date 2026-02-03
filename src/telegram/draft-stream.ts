@@ -9,6 +9,7 @@ export type TelegramDraftStream = {
   flush: () => Promise<void>;
   stop: () => void;
   delete: () => Promise<void>;
+  getMessageId: () => number | undefined;
 };
 
 export function createTelegramDraftStream(params: {
@@ -143,6 +144,8 @@ export function createTelegramDraftStream(params: {
     }
   };
 
+  const getMessageId = () => sentMessageId;
+
   params.log?.(
     `telegram draft stream ready (draftId=${draftId}, maxChars=${maxChars}, throttleMs=${throttleMs})`,
   );
@@ -158,5 +161,5 @@ export function createTelegramDraftStream(params: {
     }
   };
 
-  return { update, flush, stop, delete: deleteMessage };
+  return { update, flush, stop, delete: deleteMessage, getMessageId };
 }

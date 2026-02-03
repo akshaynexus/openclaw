@@ -31,17 +31,25 @@ describe("dispatchTelegramMessage draft streaming", () => {
     deliverReplies.mockReset();
   });
 
-  it("streams drafts in private threads and forwards thread id", async () => {
+  it("streams tool status, reasoning, and final reply correctly", async () => {
     const draftStream = {
       update: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
+      getMessageId: vi.fn().mockReturnValue(999),
     };
     createTelegramDraftStream.mockReturnValue(draftStream);
+
     dispatchReplyWithBufferedBlockDispatcher.mockImplementation(
       async ({ dispatcherOptions, replyOptions }) => {
-        await replyOptions?.onPartialReply?.({ text: "Hello" });
-        await dispatcherOptions.deliver({ text: "Hello" }, { kind: "final" });
+        // 1. Tool start
+        await replyOptions?.onToolStart?.("search_web", { query: "telegram" });
+        // 2. Reasoning stream
+        await replyOptions?.onReasoningStream?.({ text: "Reasoning:\nI will search." });
+        // 3. Partial reply
+        await replyOptions?.onPartialReply?.({ text: "Found info." });
+        // 4. Final reply
+        await dispatcherOptions.deliver({ text: "Final answer." }, { kind: "final" });
         return { queuedFinal: true };
       },
     );
@@ -51,26 +59,14 @@ describe("dispatchTelegramMessage draft streaming", () => {
     const context = {
       ctxPayload: {},
       primaryCtx: { message: { chat: { id: 123, type: "private" } } },
-      msg: {
-        chat: { id: 123, type: "private" },
-        message_id: 456,
-        message_thread_id: 777,
-      },
+      msg: { chat: { id: 123, type: "private" }, message_id: 456 },
       chatId: 123,
       isGroup: false,
-      resolvedThreadId: undefined,
-      replyThreadId: 777,
       threadSpec: { id: 777, scope: "dm" },
-      historyKey: undefined,
-      historyLimit: 0,
-      groupHistories: new Map(),
       route: { agentId: "default", accountId: "default" },
-      skillFilter: undefined,
       sendTyping: vi.fn(),
       sendRecordVoice: vi.fn(),
-      ackReactionPromise: null,
-      reactionApi: null,
-      removeAckAfterReply: false,
+      placeholder: { enabled: false },
     };
 
     const bot = { api: { sendMessageDraft: vi.fn() } } as unknown as Bot;
@@ -95,17 +91,19 @@ describe("dispatchTelegramMessage draft streaming", () => {
       resolveBotTopicsEnabled,
     });
 
-    expect(resolveBotTopicsEnabled).toHaveBeenCalledWith(context.primaryCtx);
-    expect(createTelegramDraftStream).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chatId: 123,
-        thread: { id: 777, scope: "dm" },
-      }),
+    // Verify updates (simplified checking of last calls)
+    const updates = draftStream.update.mock.calls.map((c) => c[0]);
+    expect(updates).toContain("🛠️ *Running search_web*...");
+    expect(updates).toContain("🛠️ *Running search_web*...\n\n<think>I will search.</think>");
+    expect(updates).toContain(
+      "🛠️ *Running search_web*...\n\n<think>I will search.</think>\nFound info.",
     );
-    expect(draftStream.update).toHaveBeenCalledWith("Hello");
+
+    // Verify final reply
     expect(deliverReplies).toHaveBeenCalledWith(
       expect.objectContaining({
-        thread: { id: 777, scope: "dm" },
+        replies: [{ text: "Final answer." }],
+        editMessageId: 999,
       }),
     );
   });

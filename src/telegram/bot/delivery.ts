@@ -48,6 +48,8 @@ export async function deliverReplies(params: {
   linkPreview?: boolean;
   /** Optional quote text for Telegram reply_parameters. */
   replyQuoteText?: string;
+  /** Optional message ID to edit for the first chunk instead of sending a new message. */
+  editMessageId?: number;
 }): Promise<{ delivered: boolean }> {
   const {
     replies,
@@ -57,8 +59,10 @@ export async function deliverReplies(params: {
     replyToMode,
     textLimit,
     thread,
+    onVoiceRecording,
     linkPreview,
     replyQuoteText,
+    editMessageId,
   } = params;
   const chunkMode = params.chunkMode ?? "length";
   let hasReplied = false;
@@ -115,9 +119,10 @@ export async function deliverReplies(params: {
         }
         // Only attach buttons to the first chunk.
         const shouldAttachButtons = i === 0 && replyMarkup;
-        await sendTelegramText(bot, chatId, chunk.html, runtime, {
+        const resultId = await sendTelegramText(bot, chatId, chunk.html, runtime, {
           replyToMessageId:
             replyToId && (replyToMode === "all" || !hasReplied) ? replyToId : undefined,
+          editMessageId: i === 0 ? editMessageId : undefined,
           replyQuoteText,
           thread,
           textMode: "html",
@@ -515,6 +520,7 @@ async function sendTelegramText(
     plainText?: string;
     linkPreview?: boolean;
     replyMarkup?: ReturnType<typeof buildInlineKeyboard>;
+    editMessageId?: number;
   },
 ): Promise<number | undefined> {
   // Telegram rejects messages with empty text. Return early to avoid API errors.
@@ -534,18 +540,26 @@ async function sendTelegramText(
   const htmlText = textMode === "html" ? text : markdownToTelegramHtml(text);
   try {
     const res = await withTelegramApiErrorLogging({
-      operation: "sendMessage",
+      operation: opts?.editMessageId ? "editMessageText" : "sendMessage",
       runtime,
       shouldLog: (err) => !PARSE_ERR_RE.test(formatErrorMessage(err)),
-      fn: () =>
-        bot.api.sendMessage(chatId, htmlText, {
+      fn: () => {
+        if (opts?.editMessageId) {
+          return bot.api.editMessageText(chatId, opts.editMessageId, htmlText, {
+            parse_mode: "HTML",
+            ...(linkPreviewOptions ? { link_preview_options: linkPreviewOptions } : {}),
+            ...(opts?.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
+          });
+        }
+        return bot.api.sendMessage(chatId, htmlText, {
           parse_mode: "HTML",
           ...(linkPreviewOptions ? { link_preview_options: linkPreviewOptions } : {}),
           ...(opts?.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
           ...baseParams,
-        }),
+        });
+      },
     });
-    return res.message_id;
+    return typeof res === "object" ? res.message_id : opts?.editMessageId;
   } catch (err) {
     const errText = formatErrorMessage(err);
     if (PARSE_ERR_RE.test(errText)) {
