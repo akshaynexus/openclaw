@@ -31,7 +31,7 @@ import {
   buildTelegramParentPeer,
   resolveTelegramForumThreadId,
 } from "./bot/helpers.js";
-import { buildModelPickerMessage } from "./commands/model-picker.js";
+import { buildModelPickerMessage, buildProviderPickerMessage } from "./commands/model-picker.js";
 import { migrateTelegramGroupConfig } from "./group-migration.js";
 import { resolveTelegramInlineButtonsScope } from "./inline-buttons.js";
 import {
@@ -653,9 +653,10 @@ export const registerTelegramHandlers = ({
         }
       }
 
-      const modelPageMatch = data.match(/^model_page:(\d+)$/);
+      const modelPageMatch = data.match(/^model_page:(.+):(\d+)$/);
       if (modelPageMatch) {
-        const page = parseInt(modelPageMatch[1], 10);
+        const provider = modelPageMatch[1];
+        const page = parseInt(modelPageMatch[2], 10);
         const isGroup =
           callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
         const msgThreadId = (callbackMessage as { message_thread_id?: number }).message_thread_id;
@@ -679,9 +680,64 @@ export const registerTelegramHandlers = ({
         const message = await buildModelPickerMessage({
           cfg,
           page,
+          provider,
           currentModel,
           agentId: route.agentId,
         });
+        try {
+          await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
+            parse_mode: "HTML",
+            reply_markup: message.reply_markup,
+          });
+        } catch {
+          // ignore not modified
+        }
+        return;
+      }
+
+      const provPickMatch = data.match(/^prov_pick:(.+)$/);
+      if (provPickMatch) {
+        const provider = provPickMatch[1];
+        const isGroup =
+          callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
+        const msgThreadId = (callbackMessage as { message_thread_id?: number }).message_thread_id;
+        const route = resolveAgentRoute({
+          cfg,
+          channel: "telegram",
+          accountId,
+          peer: {
+            kind: isGroup ? "group" : "dm",
+            id: isGroup ? buildTelegramGroupPeerId(chatId, msgThreadId) : String(chatId),
+          },
+        });
+        const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
+        const store = loadSessionStore(storePath);
+        const session = store[route.sessionKey];
+        const currentModel =
+          session?.providerOverride && session?.modelOverride
+            ? `${session.providerOverride}/${session.modelOverride}`
+            : undefined;
+
+        const message = await buildModelPickerMessage({
+          cfg,
+          page: 1,
+          provider,
+          currentModel,
+          agentId: route.agentId,
+        });
+        try {
+          await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
+            parse_mode: "HTML",
+            reply_markup: message.reply_markup,
+          });
+        } catch {
+          // ignore not modified
+        }
+        return;
+      }
+
+      if (data === "prov_list") {
+        const message = await buildProviderPickerMessage({ cfg });
         try {
           await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
             parse_mode: "HTML",
@@ -789,12 +845,8 @@ export const registerTelegramHandlers = ({
           ? `${session.providerOverride}/${session.modelOverride}`
           : undefined;
 
-      // Prefer the new picker UI, but fallback/support existing
-      const message = await buildModelPickerMessage({
+      const message = await buildProviderPickerMessage({
         cfg,
-        page: 1,
-        currentModel,
-        agentId: route.agentId,
       });
 
       await ctx.reply(message.text, {
