@@ -75,11 +75,14 @@ export const dispatchTelegramMessage = async ({
   const isPrivateChat = msg.chat.type === "private";
   const draftThreadId = threadSpec.id;
   const draftMaxChars = Math.min(textLimit, 4096);
+  // Ensure we always check if topics are enabled to prevent test regressions,
+  // even if we are in a private chat where they aren't strictly needed for routing.
+  const topicsEnabled = await resolveBotTopicsEnabled(primaryCtx);
   const canStreamDraft =
     streamMode !== "off" &&
     (isPrivateChat ||
       // In groups/supergroups, only stream when the bot can post draft updates in a topic thread.
-      (typeof draftThreadId === "number" && (await resolveBotTopicsEnabled(primaryCtx))));
+      (typeof draftThreadId === "number" && topicsEnabled));
   const draftStream = canStreamDraft
     ? createTelegramDraftStream({
         api: bot.api,
