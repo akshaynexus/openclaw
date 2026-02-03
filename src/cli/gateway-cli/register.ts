@@ -162,7 +162,7 @@ export function registerGatewayCli(program: Command) {
     .option("--force", "Reinstall/overwrite if already installed", false)
     .option("--json", "Output JSON", false)
     .action(async (opts) => {
-      await runDaemonInstall(opts);
+      await runDaemonInstall({ ...opts, force: Boolean(opts.force) });
     });
 
   gateway
