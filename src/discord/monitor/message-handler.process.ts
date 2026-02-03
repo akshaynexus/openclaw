@@ -43,6 +43,9 @@ import { deliverDiscordReply } from "./reply-delivery.js";
 import { resolveDiscordAutoThreadReplyPlan, resolveDiscordThreadStarter } from "./threading.js";
 import { sendTyping } from "./typing.js";
 
+const processedMessageIds = new Set<string>();
+const PROCESS_DEDUPE_TTL_MS = 10000;
+
 export async function processDiscordMessage(ctx: DiscordMessagePreflightContext) {
   const {
     cfg,
@@ -85,6 +88,13 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     route,
     commandAuthorized,
   } = ctx;
+
+  if (processedMessageIds.has(message.id)) {
+    logVerbose(`discord: skipping duplicate processing for message ${message.id}`);
+    return;
+  }
+  processedMessageIds.add(message.id);
+  setTimeout(() => processedMessageIds.delete(message.id), PROCESS_DEDUPE_TTL_MS);
 
   const mediaList = await resolveMediaList(message, mediaMaxBytes);
   const text = messageText;
