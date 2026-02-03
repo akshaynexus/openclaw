@@ -6,6 +6,7 @@ import { resolveOpenClawAgentDir } from "../../agents/agent-paths.js";
 import { listProfilesForProvider } from "../../agents/auth-profiles.js";
 import {
   getCustomProviderApiKey,
+  hasAuthForProvider,
   resolveAwsSdkEnvVarName,
   resolveEnvApiKey,
 } from "../../agents/model-auth.js";
@@ -27,22 +28,6 @@ const isLocalBaseUrl = (baseUrl: string) => {
   } catch {
     return false;
   }
-};
-
-const hasAuthForProvider = (provider: string, cfg: OpenClawConfig, authStore: AuthProfileStore) => {
-  if (listProfilesForProvider(authStore, provider).length > 0) {
-    return true;
-  }
-  if (provider === "amazon-bedrock" && resolveAwsSdkEnvVarName()) {
-    return true;
-  }
-  if (resolveEnvApiKey(provider)) {
-    return true;
-  }
-  if (getCustomProviderApiKey(cfg, provider)) {
-    return true;
-  }
-  return false;
 };
 
 export async function loadModelRegistry(cfg: OpenClawConfig) {
