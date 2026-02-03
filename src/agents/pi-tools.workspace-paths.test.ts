@@ -2,6 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 300000 });
+
 import { createOpenClawCodingTools } from "./pi-tools.js";
 
 vi.mock("../plugins/tools.js", () => ({

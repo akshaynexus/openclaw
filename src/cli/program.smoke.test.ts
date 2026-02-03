@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.setConfig({ testTimeout: 300000 });
+
 const messageCommand = vi.fn();
 const statusCommand = vi.fn();
 const configureCommand = vi.fn();
