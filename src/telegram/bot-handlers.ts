@@ -763,7 +763,7 @@ export const registerTelegramHandlers = ({
     }
   });
 
-  bot.command(["model", "models"], async (ctx) => {
+  bot.command("models", async (ctx) => {
     if (shouldSkipUpdate(ctx)) {
       return;
     }
