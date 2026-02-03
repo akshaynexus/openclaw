@@ -1,12 +1,8 @@
 import type { OpenClawConfig } from "../config/config.js";
 import type { WizardPrompter, WizardSelectOption } from "../wizard/prompts.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
+import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
-import {
-  getCustomProviderApiKey,
-  hasAuthForProvider,
-  resolveEnvApiKey,
-} from "../agents/model-auth.js";
+import { hasAuthForProvider } from "../agents/model-auth.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import {
   buildAllowedModelSet,
