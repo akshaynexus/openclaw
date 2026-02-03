@@ -58,7 +58,6 @@ import { theme } from "../terminal/theme.js";
 import { replaceCliName, resolveCliName } from "./cli-name.js";
 import { formatCliCommand } from "./command-format.js";
 import { installCompletion } from "./completion-cli.js";
-import { runDaemonInstall } from "./daemon-cli/runners.js";
 import { formatHelpExamples } from "./help-format.js";
 
 export type UpdateCommandOptions = {
