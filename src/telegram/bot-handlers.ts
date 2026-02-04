@@ -1,12 +1,13 @@
-import type { TelegramContext, TelegramMessage } from "./bot/types.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 // @ts-nocheck
+import type { Message } from "@grammyjs/types";
+import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { hasControlCommand } from "../auto-reply/command-detection.js";
 import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../auto-reply/inbound-debounce.js";
 import { buildCommandsPaginationKeyboard } from "../auto-reply/reply/commands-info.js";
+import { buildModelsProviderData } from "../auto-reply/reply/commands-models.js";
 import { listSkillCommandsForAgents } from "../auto-reply/skill-commands.js";
 import { buildCommandsMessagePaginated } from "../auto-reply/status.js";
 import { resolveChannelConfigWrites } from "../channels/plugins/config-writes.js";
@@ -56,7 +57,7 @@ export const registerTelegramHandlers = ({
 
   type TextFragmentEntry = {
     key: string;
-    messages: Array<{ msg: TelegramMessage; ctx: unknown; receivedAtMs: number }>;
+    messages: Array<{ msg: Message; ctx: unknown; receivedAtMs: number }>;
     timer: ReturnType<typeof setTimeout>;
   };
   const textFragmentBuffer = new Map<string, TextFragmentEntry>();
@@ -65,7 +66,7 @@ export const registerTelegramHandlers = ({
   const debounceMs = resolveInboundDebounceMs({ cfg, channel: "telegram" });
   type TelegramDebounceEntry = {
     ctx: unknown;
-    msg: TelegramMessage;
+    msg: Message;
     allMedia: Array<{ path: string; contentType?: string }>;
     storeAllowFrom: string[];
     debounceKey: string | null;
@@ -104,7 +105,7 @@ export const registerTelegramHandlers = ({
       const baseCtx = first.ctx as { me?: unknown; getFile?: unknown } & Record<string, unknown>;
       const getFile =
         typeof baseCtx.getFile === "function" ? baseCtx.getFile.bind(baseCtx) : async () => ({});
-      const syntheticMessage: TelegramMessage = {
+      const syntheticMessage: Message = {
         ...first.msg,
         text: combinedText,
         caption: undefined,
@@ -170,7 +171,7 @@ export const registerTelegramHandlers = ({
         return;
       }
 
-      const syntheticMessage: TelegramMessage = {
+      const syntheticMessage: Message = {
         ...first.msg,
         text: combinedText,
         caption: undefined,
@@ -410,6 +411,7 @@ export const registerTelegramHandlers = ({
         return;
       }
 
+      // Model selection handler with better UX
       const modelPickMatch = data.match(/^model_pick:(.+)$/);
       if (modelPickMatch) {
         const modelKey = modelPickMatch[1];
@@ -562,7 +564,7 @@ export const registerTelegramHandlers = ({
         return;
       }
 
-      const syntheticMessage: TelegramMessage = {
+      const syntheticMessage: Message = {
         ...callbackMessage,
         from: callback.from,
         text: data,
@@ -774,7 +776,7 @@ export const registerTelegramHandlers = ({
       }
 
       // Text fragment handling - Telegram splits long pastes into multiple inbound messages (~4096 chars).
-      // We buffer “near-limit” messages and append immediately-following parts.
+      // We buffer "near-limit" messages and append immediately-following parts.
       const text = typeof msg.text === "string" ? msg.text : undefined;
       const isCommandLike = (text ?? "").trim().startsWith("/");
       if (text && !isCommandLike) {
