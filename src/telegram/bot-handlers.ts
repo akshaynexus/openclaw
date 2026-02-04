@@ -8,24 +8,33 @@ import {
 } from "../auto-reply/inbound-debounce.js";
 import { buildCommandsPaginationKeyboard } from "../auto-reply/reply/commands-info.js";
 import { buildModelsProviderData } from "../auto-reply/reply/commands-models.js";
+import { resolveStoredModelOverride } from "../auto-reply/reply/model-selection.js";
 import { listSkillCommandsForAgents } from "../auto-reply/skill-commands.js";
 import { buildCommandsMessagePaginated } from "../auto-reply/status.js";
 import { resolveChannelConfigWrites } from "../channels/plugins/config-writes.js";
 import { loadConfig } from "../config/config.js";
 import { writeConfigFile } from "../config/io.js";
-import { loadSessionStore, resolveStorePath, saveSessionStore } from "../config/sessions.js";
+import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import { danger, logVerbose, warn } from "../globals.js";
 import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
 import { resolveAgentRoute } from "../routing/resolve-route.js";
+import { resolveThreadSessionKeys } from "../routing/session-key.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { firstDefined, isSenderAllowed, normalizeAllowFromWithStore } from "./bot-access.js";
 import { RegisterTelegramHandlerParams } from "./bot-native-commands.js";
 import { MEDIA_GROUP_TIMEOUT_MS, type MediaGroupEntry } from "./bot-updates.js";
 import { resolveMedia } from "./bot/delivery.js";
 import { buildTelegramGroupPeerId, resolveTelegramForumThreadId } from "./bot/helpers.js";
-import { buildModelPickerMessage, buildProviderPickerMessage } from "./commands/model-picker.js";
 import { migrateTelegramGroupConfig } from "./group-migration.js";
 import { resolveTelegramInlineButtonsScope } from "./inline-buttons.js";
+import {
+  buildModelsKeyboard,
+  buildProviderKeyboard,
+  calculateTotalPages,
+  getModelsPageSize,
+  parseModelCallbackData,
+  type ProviderInfo,
+} from "./model-buttons.js";
 import { buildInlineKeyboard } from "./send.js";
 
 export const registerTelegramHandlers = ({
@@ -37,11 +46,8 @@ export const registerTelegramHandlers = ({
   mediaMaxBytes,
   telegramCfg,
   groupAllowFrom,
-  channelAllowFrom,
   resolveGroupPolicy,
-  resolveChannelPolicy,
   resolveTelegramGroupConfig,
-  resolveTelegramChannelConfig,
   shouldSkipUpdate,
   processMessage,
   logger,
@@ -125,6 +131,60 @@ export const registerTelegramHandlers = ({
       runtime.error?.(danger(`telegram debounce flush failed: ${String(err)}`));
     },
   });
+
+  const resolveTelegramSessionModel = (params: {
+    chatId: number | string;
+    isGroup: boolean;
+    isForum: boolean;
+    messageThreadId?: number;
+    resolvedThreadId?: number;
+  }): string | undefined => {
+    const resolvedThreadId =
+      params.resolvedThreadId ??
+      resolveTelegramForumThreadId({
+        isForum: params.isForum,
+        messageThreadId: params.messageThreadId,
+      });
+    const peerId = params.isGroup
+      ? buildTelegramGroupPeerId(params.chatId, resolvedThreadId)
+      : String(params.chatId);
+    const route = resolveAgentRoute({
+      cfg,
+      channel: "telegram",
+      accountId,
+      peer: {
+        kind: params.isGroup ? "group" : "dm",
+        id: peerId,
+      },
+    });
+    const baseSessionKey = route.sessionKey;
+    const dmThreadId = !params.isGroup ? params.messageThreadId : undefined;
+    const threadKeys =
+      dmThreadId != null
+        ? resolveThreadSessionKeys({ baseSessionKey, threadId: String(dmThreadId) })
+        : null;
+    const sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
+    const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
+    const store = loadSessionStore(storePath);
+    const entry = store[sessionKey];
+    const storedOverride = resolveStoredModelOverride({
+      sessionEntry: entry,
+      sessionStore: store,
+      sessionKey,
+    });
+    if (storedOverride) {
+      return storedOverride.provider
+        ? `${storedOverride.provider}/${storedOverride.model}`
+        : storedOverride.model;
+    }
+    const provider = entry?.modelProvider?.trim();
+    const model = entry?.model?.trim();
+    if (provider && model) {
+      return `${provider}/${model}`;
+    }
+    const modelCfg = cfg.agents?.defaults?.model;
+    return typeof modelCfg === "string" ? modelCfg : modelCfg?.primary;
+  };
 
   const processMediaGroup = async (entry: MediaGroupEntry) => {
     try {
@@ -411,156 +471,114 @@ export const registerTelegramHandlers = ({
         return;
       }
 
-      // Model selection handler with better UX
-      const modelPickMatch = data.match(/^model_pick:(.+)$/);
-      if (modelPickMatch) {
-        const modelKey = modelPickMatch[1];
-        if (modelKey) {
-          const isGroup =
-            callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
-          const msgThreadId = (callbackMessage as { message_thread_id?: number }).message_thread_id;
-          const route = resolveAgentRoute({
-            cfg,
-            channel: "telegram",
-            accountId,
-            peer: {
-              kind: isGroup ? "group" : "dm",
-              id: isGroup ? buildTelegramGroupPeerId(chatId, msgThreadId) : String(chatId),
-            },
-          });
+      // Model selection callback handler (mdl_prov, mdl_list_*, mdl_sel_*, mdl_back)
+      const modelCallback = parseModelCallbackData(data);
+      if (modelCallback) {
+        const modelData = await buildModelsProviderData(cfg);
+        const { byProvider, providers } = modelData;
 
-          const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
-          const store = loadSessionStore(storePath);
-
-          if (!store[route.sessionKey]) {
-            store[route.sessionKey] = {
-              sessionId: Math.random().toString(36).slice(2),
-              updatedAt: Date.now(),
-            };
-          }
-          const session = store[route.sessionKey];
-
-          const parts = modelKey.trim().split("/");
-          if (parts.length >= 2) {
-            const provider = parts[0];
-            const model = parts.slice(1).join("/");
-            session.providerOverride = provider;
-            session.modelOverride = model;
-            session.updatedAt = Date.now();
-          }
-
-          await saveSessionStore(storePath, store);
-
+        const editMessageWithButtons = async (
+          text: string,
+          buttons: ReturnType<typeof buildProviderKeyboard>,
+        ) => {
+          const keyboard = buildInlineKeyboard(buttons);
           try {
             await bot.api.editMessageText(
-              chatId,
+              callbackMessage.chat.id,
               callbackMessage.message_id,
-              `Use <b>${modelKey}</b> for this chat.`,
-              { parse_mode: "HTML" },
+              text,
+              keyboard ? { reply_markup: keyboard } : undefined,
             );
-          } catch (err) {
-            const errStr = String(err);
+          } catch (editErr) {
+            const errStr = String(editErr);
             if (!errStr.includes("message is not modified")) {
-              runtime.error?.(danger(`model pick failed: ${String(err)}`));
+              throw editErr;
             }
           }
+        };
+
+        if (modelCallback.type === "providers" || modelCallback.type === "back") {
+          if (providers.length === 0) {
+            await editMessageWithButtons("No providers available.", []);
+            return;
+          }
+          const providerInfos: ProviderInfo[] = providers.map((p) => ({
+            id: p,
+            count: byProvider.get(p)?.size ?? 0,
+          }));
+          const buttons = buildProviderKeyboard(providerInfos);
+          await editMessageWithButtons("Select a provider:", buttons);
           return;
         }
-      }
 
-      const modelPageMatch = data.match(/^model_page:(.+):(\d+)$/);
-      if (modelPageMatch) {
-        const provider = modelPageMatch[1];
-        const page = parseInt(modelPageMatch[2], 10);
-        const isGroup =
-          callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
-        const msgThreadId = (callbackMessage as { message_thread_id?: number }).message_thread_id;
-        const route = resolveAgentRoute({
-          cfg,
-          channel: "telegram",
-          accountId,
-          peer: {
-            kind: isGroup ? "group" : "dm",
-            id: isGroup ? buildTelegramGroupPeerId(chatId, msgThreadId) : String(chatId),
-          },
-        });
-        const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
-        const store = loadSessionStore(storePath);
-        const session = store[route.sessionKey];
-        const currentModel =
-          session?.providerOverride && session?.modelOverride
-            ? `${session.providerOverride}/${session.modelOverride}`
-            : undefined;
+        if (modelCallback.type === "list") {
+          const { provider, page } = modelCallback;
+          const modelSet = byProvider.get(provider);
+          if (!modelSet || modelSet.size === 0) {
+            // Provider not found or no models - show providers list
+            const providerInfos: ProviderInfo[] = providers.map((p) => ({
+              id: p,
+              count: byProvider.get(p)?.size ?? 0,
+            }));
+            const buttons = buildProviderKeyboard(providerInfos);
+            await editMessageWithButtons(
+              `Unknown provider: ${provider}\n\nSelect a provider:`,
+              buttons,
+            );
+            return;
+          }
+          const models = [...modelSet].toSorted();
+          const pageSize = getModelsPageSize();
+          const totalPages = calculateTotalPages(models.length, pageSize);
+          const safePage = Math.max(1, Math.min(page, totalPages));
 
-        const message = await buildModelPickerMessage({
-          cfg,
-          page,
-          provider,
-          currentModel,
-          agentId: route.agentId,
-        });
-        try {
-          await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
-            parse_mode: "HTML",
-            reply_markup: message.reply_markup,
+          // Resolve current model from session (prefer overrides)
+          const currentModel = resolveTelegramSessionModel({
+            chatId,
+            isGroup,
+            isForum,
+            messageThreadId,
+            resolvedThreadId,
           });
-        } catch {
-          // ignore not modified
-        }
-        return;
-      }
 
-      const provPickMatch = data.match(/^prov_pick:(.+)$/);
-      if (provPickMatch) {
-        const provider = provPickMatch[1];
-        const isGroup =
-          callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
-        const msgThreadId = (callbackMessage as { message_thread_id?: number }).message_thread_id;
-        const route = resolveAgentRoute({
-          cfg,
-          channel: "telegram",
-          accountId,
-          peer: {
-            kind: isGroup ? "group" : "dm",
-            id: isGroup ? buildTelegramGroupPeerId(chatId, msgThreadId) : String(chatId),
-          },
-        });
-        const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
-        const store = loadSessionStore(storePath);
-        const session = store[route.sessionKey];
-        const currentModel =
-          session?.providerOverride && session?.modelOverride
-            ? `${session.providerOverride}/${session.modelOverride}`
-            : undefined;
-
-        const message = await buildModelPickerMessage({
-          cfg,
-          page: 1,
-          provider,
-          currentModel,
-          agentId: route.agentId,
-        });
-        try {
-          await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
-            parse_mode: "HTML",
-            reply_markup: message.reply_markup,
+          const buttons = buildModelsKeyboard({
+            provider,
+            models,
+            currentModel,
+            currentPage: safePage,
+            totalPages,
+            pageSize,
           });
-        } catch {
-          // ignore not modified
+          const text = `Models (${provider}) — ${models.length} available`;
+          await editMessageWithButtons(text, buttons);
+          return;
         }
-        return;
-      }
 
-      if (data === "prov_list") {
-        const message = await buildProviderPickerMessage({ cfg });
-        try {
-          await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
-            parse_mode: "HTML",
-            reply_markup: message.reply_markup,
-          });
-        } catch {
-          // ignore not modified
+        if (modelCallback.type === "select") {
+          const { provider, model } = modelCallback;
+          // Process model selection as a synthetic message with /model command
+          const syntheticMessage: Message = {
+            ...callbackMessage,
+            from: callback.from,
+            text: `/model ${provider}/${model}`,
+            caption: undefined,
+            caption_entities: undefined,
+            entities: undefined,
+          };
+          const getFile =
+            typeof ctx.getFile === "function" ? ctx.getFile.bind(ctx) : async () => ({});
+          await processMessage(
+            { message: syntheticMessage, me: ctx.me, getFile },
+            [],
+            storeAllowFrom,
+            {
+              forceWasMentioned: true,
+              messageIdOverride: callback.id,
+            },
+          );
+          return;
         }
+
         return;
       }
 
@@ -631,45 +649,6 @@ export const registerTelegramHandlers = ({
       }
     } catch (err) {
       runtime.error?.(danger(`[telegram] Group migration handler failed: ${String(err)}`));
-    }
-  });
-
-  bot.command("models", async (ctx) => {
-    if (shouldSkipUpdate(ctx)) {
-      return;
-    }
-    try {
-      const chatId = ctx.chat.id;
-      const messageThreadId = (ctx.message as { message_thread_id?: number } | undefined)
-        ?.message_thread_id;
-      const isGroup = ctx.chat.type === "group" || ctx.chat.type === "supergroup";
-      // Identify session
-      const route = resolveAgentRoute({
-        cfg,
-        channel: "telegram",
-        accountId,
-        peer: {
-          kind: isGroup ? "group" : "dm",
-          id: isGroup ? buildTelegramGroupPeerId(chatId, messageThreadId) : String(chatId),
-        },
-      });
-      const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
-      const store = loadSessionStore(storePath);
-      const session = store[route.sessionKey];
-      const currentProvider = session?.providerOverride;
-
-      const message = await buildProviderPickerMessage({
-        cfg,
-        currentProvider,
-      });
-
-      await ctx.reply(message.text, {
-        parse_mode: "HTML",
-        reply_markup: message.reply_markup,
-        message_thread_id: messageThreadId,
-      });
-    } catch (err) {
-      runtime.error?.(danger(`model command failed: ${String(err)}`));
     }
   });
 
@@ -776,7 +755,7 @@ export const registerTelegramHandlers = ({
       }
 
       // Text fragment handling - Telegram splits long pastes into multiple inbound messages (~4096 chars).
-      // We buffer "near-limit" messages and append immediately-following parts.
+      // We buffer “near-limit” messages and append immediately-following parts.
       const text = typeof msg.text === "string" ? msg.text : undefined;
       const isCommandLike = (text ?? "").trim().startsWith("/");
       if (text && !isCommandLike) {
@@ -916,7 +895,7 @@ export const registerTelegramHandlers = ({
         ? `telegram:${accountId ?? "default"}:${conversationKey}:${senderId}`
         : null;
       await inboundDebouncer.enqueue({
-        ctx: ctx as unknown as TelegramContext,
+        ctx,
         msg,
         allMedia,
         storeAllowFrom,
@@ -925,122 +904,6 @@ export const registerTelegramHandlers = ({
       });
     } catch (err) {
       runtime.error?.(danger(`handler failed: ${String(err)}`));
-    }
-  });
-
-  // Channel post handler - for Telegram broadcast channels
-  bot.on("channel_post", async (ctx) => {
-    try {
-      const msg = ctx.channelPost;
-      if (!msg) {
-        return;
-      }
-      if (shouldSkipUpdate(ctx)) {
-        return;
-      }
-
-      const chatId = msg.chat.id;
-      const storeAllowFrom = await readChannelAllowFromStore("telegram").catch(() => []);
-      const { channelConfig } = resolveTelegramChannelConfig(chatId);
-
-      // Check if channel is explicitly disabled
-      if (channelConfig?.enabled === false) {
-        logVerbose(`Blocked telegram channel ${chatId} (channel disabled)`);
-        return;
-      }
-
-      // Channel policy filtering
-      // Note: channels reuse groupPolicy default if no channelPolicy is set
-      const defaultChannelPolicy =
-        (cfg.channels?.defaults as { channelPolicy?: string })?.channelPolicy ??
-        cfg.channels?.defaults?.groupPolicy;
-      const channelPolicy =
-        (telegramCfg as { channelPolicy?: string }).channelPolicy ??
-        defaultChannelPolicy ??
-        "allowlist";
-      if (channelPolicy === "disabled") {
-        logVerbose(`Blocked telegram channel post (channelPolicy: disabled)`);
-        return;
-      }
-
-      // Check channel allowlist
-      const channelAllowlist = resolveChannelPolicy(chatId);
-      if (channelAllowlist.allowlistEnabled && !channelAllowlist.allowed) {
-        logger.info(
-          { chatId, title: msg.chat.title, reason: "not-allowed" },
-          "skipping channel post",
-        );
-        return;
-      }
-
-      // For channels with allowlist policy, check sender (sender_chat for channels)
-      if (channelPolicy === "allowlist") {
-        const senderChatId =
-          (msg as { sender_chat?: { id?: number } }).sender_chat?.id ?? msg.chat.id;
-        const effectiveChannelAllow = normalizeAllowFromWithStore({
-          allowFrom: channelConfig?.allowFrom ?? channelAllowFrom ?? [],
-          storeAllowFrom,
-        });
-        if (!effectiveChannelAllow.hasEntries) {
-          logVerbose(
-            "Blocked telegram channel post (channelPolicy: allowlist, no channel allowlist entries)",
-          );
-          return;
-        }
-        if (
-          !isSenderAllowed({
-            allow: effectiveChannelAllow,
-            senderId: String(senderChatId),
-            senderUsername: (msg.chat as { username?: string }).username ?? "",
-          })
-        ) {
-          logVerbose(
-            `Blocked telegram channel post from ${senderChatId} (channelPolicy: allowlist)`,
-          );
-          return;
-        }
-      }
-
-      // Create a compatible context for media resolution and message processing
-      const getFile = typeof ctx.getFile === "function" ? ctx.getFile.bind(ctx) : async () => ({});
-      const channelCtx: TelegramContext = {
-        message: msg as TelegramMessage,
-        me: ctx.me,
-        getFile,
-      };
-
-      // Handle media
-      let media: Awaited<ReturnType<typeof resolveMedia>> = null;
-      try {
-        media = await resolveMedia(channelCtx, mediaMaxBytes, opts.token, opts.proxyFetch);
-      } catch (mediaErr) {
-        const errMsg = String(mediaErr);
-        if (errMsg.includes("exceeds") && errMsg.includes("MB limit")) {
-          logger.warn({ chatId, error: errMsg }, "channel media exceeds size limit");
-          return;
-        }
-        throw mediaErr;
-      }
-
-      const hasText = Boolean((msg.text ?? msg.caption ?? "").trim());
-      if (!media && !hasText) {
-        logVerbose("telegram: skipping channel post with no text or media");
-        return;
-      }
-
-      const allMedia = media
-        ? [
-            {
-              path: media.path,
-              contentType: media.contentType,
-            },
-          ]
-        : [];
-
-      // Process the channel post
-      await processMessage(channelCtx, allMedia, storeAllowFrom, { isChannel: true });
-    } catch (err) {
-      runtime.error?.(danger(`channel_post handler failed: ${String(err)}`));
     }
   });
 };

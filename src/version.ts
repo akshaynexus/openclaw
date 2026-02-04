@@ -49,6 +49,26 @@ function readVersionFromBuildInfo(): string | null {
   }
 }
 
+function readVersionFromBuildInfo(): string | null {
+  try {
+    const require = createRequire(import.meta.url);
+    const candidates = ["../build-info.json", "./build-info.json"];
+    for (const candidate of candidates) {
+      try {
+        const info = require(candidate) as { version?: string };
+        if (info.version) {
+          return info.version;
+        }
+      } catch {
+        // ignore missing candidate
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Single source of truth for the current OpenClaw version.
 // - Embedded/bundled builds: injected define or env var.
 // - Dev/npm builds: package.json.
