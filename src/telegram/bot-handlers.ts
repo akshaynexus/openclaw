@@ -457,7 +457,10 @@ export const registerTelegramHandlers = ({
               { parse_mode: "HTML" },
             );
           } catch (err) {
-            runtime.error?.(danger(`model pick failed: ${String(err)}`));
+            const errStr = String(err);
+            if (!errStr.includes("message is not modified")) {
+              runtime.error?.(danger(`model pick failed: ${String(err)}`));
+            }
           }
           return;
         }
