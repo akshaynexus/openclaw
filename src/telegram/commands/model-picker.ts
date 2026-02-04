@@ -17,18 +17,26 @@ export async function buildModelPickerMessage(params: {
     (item) => item.provider === params.provider,
   );
 
-  // Filter out models that might not be working or irrelevant if needed,
-  // but for now show all from the picker logic.
-
-  const totalPages = Math.ceil(allItems.length / PAGE_SIZE);
-  const page = Math.max(1, Math.min(params.page, totalPages));
-  const start = (page - 1) * PAGE_SIZE;
+  // Calculate total pages and ensure page is within valid range
+  const totalPages = Math.max(1, Math.ceil(allItems.length / PAGE_SIZE));
+  const safePage = Math.max(1, Math.min(params.page, totalPages));
+  const start = (safePage - 1) * PAGE_SIZE;
   const items = allItems.slice(start, start + PAGE_SIZE);
 
   const lines = ["<b>Select a Model</b>", ""];
   if (params.currentModel) {
     lines.push(`Current: <code>${params.currentModel}</code>`);
     lines.push("");
+  }
+
+  // Handle case when no models are available
+  if (allItems.length === 0) {
+    lines.push("No models available for this provider.");
+    lines.push("Please check your authentication settings.");
+    return {
+      text: lines.join("\n"),
+      reply_markup: new InlineKeyboard().text("« Back to Providers", "prov_list"),
+    };
   }
 
   const keyboard = new InlineKeyboard();
@@ -49,14 +57,23 @@ export async function buildModelPickerMessage(params: {
     keyboard.text(btnLabel, `model_pick:${key}`).row();
   }
 
-  // Pagination
-  if (page > 1) {
-    keyboard.text("« Prev", `model_page:${params.provider}:${page - 1}`);
+  // Pagination with boundary checks
+  const paginationRow = new InlineKeyboard();
+  if (safePage > 1) {
+    paginationRow.text("« Prev", `model_page:${params.provider}:${safePage - 1}`);
   }
-  keyboard.text(`${page}/${totalPages}`, "noop");
-  if (page < totalPages) {
-    keyboard.text("Next »", `model_page:${params.provider}:${page + 1}`);
+  
+  // Show current page info
+  paginationRow.text(`${safePage}/${totalPages}`, "noop");
+  
+  if (safePage < totalPages) {
+    paginationRow.text("Next »", `model_page:${params.provider}:${safePage + 1}`);
   }
+  
+  if (paginationRow[0]?.length > 0) {
+    keyboard.row().append(paginationRow);
+  }
+  
   keyboard.row().text("« Back to Providers", "prov_list");
 
   return {
@@ -64,6 +81,7 @@ export async function buildModelPickerMessage(params: {
     reply_markup: keyboard,
   };
 }
+
 export async function buildProviderPickerMessage(params: {
   cfg: OpenClawConfig;
   currentProvider?: string;
@@ -78,11 +96,27 @@ export async function buildProviderPickerMessage(params: {
 
   const providers = Array.from(providerMap.keys()).toSorted((a, b) => a.localeCompare(b));
 
+  // Handle case when no providers are available
+  if (providers.length === 0) {
+    const lines = [
+      "<b>No Providers Available</b>",
+      "",
+      "No authenticated model providers found.",
+      "Please check your authentication settings.",
+      "",
+      "Use: /auth to configure providers"
+    ];
+    return {
+      text: lines.join("\n"),
+      reply_markup: new InlineKeyboard(),
+    };
+  }
+
   const lines = ["<b>Select a Provider</b>", "", "Choose a provider to see available models:"];
   const keyboard = new InlineKeyboard();
 
   for (const provider of providers) {
-    const count = providerMap.get(provider);
+    const count = providerMap.get(provider) || 0;
     const label = `${provider} (${count})`;
     keyboard.text(label, `prov_pick:${provider}`).row();
   }
