@@ -20,6 +20,7 @@ import {
   renderTelegramHtmlText,
 } from "../format.js";
 import { buildInlineKeyboard } from "../send.js";
+import { isMessageContentUnchanged, recordSentMessage } from "../sent-message-cache.js";
 import { cacheSticker, getCachedSticker } from "../sticker-cache.js";
 import { resolveTelegramVoiceSend } from "../voice.js";
 import {
@@ -537,8 +538,11 @@ async function sendTelegramText(
   const linkPreviewOptions = linkPreviewEnabled ? undefined : { is_disabled: true };
   const textMode = opts?.textMode ?? "markdown";
   const htmlText = textMode === "html" ? text : markdownToTelegramHtml(text);
+  if (opts?.editMessageId && isMessageContentUnchanged(chatId, opts.editMessageId, htmlText)) {
+    return opts.editMessageId;
+  }
   try {
-    const res = await withTelegramApiErrorLogging({
+    const res = await withTelegramApiErrorLogging<any>({
       operation: opts?.editMessageId ? "editMessageText" : "sendMessage",
       runtime,
       shouldLog: (err) => !PARSE_ERR_RE.test(formatErrorMessage(err)),
@@ -558,9 +562,16 @@ async function sendTelegramText(
         });
       },
     });
-    return typeof res === "object" ? res.message_id : opts?.editMessageId;
+    const messageId = typeof res === "object" ? res.message_id : opts?.editMessageId;
+    if (messageId) {
+      recordSentMessage(chatId, messageId, htmlText);
+    }
+    return messageId;
   } catch (err) {
     const errText = formatErrorMessage(err);
+    if (errText.includes("message is not modified")) {
+      return typeof opts?.editMessageId === "number" ? opts.editMessageId : undefined;
+    }
     if (PARSE_ERR_RE.test(errText)) {
       runtime.log?.(`telegram HTML parse failed; retrying without formatting: ${errText}`);
       const fallbackText = opts?.plainText ?? text;
@@ -574,6 +585,9 @@ async function sendTelegramText(
             ...baseParams,
           }),
       });
+      if (res?.message_id) {
+        recordSentMessage(chatId, res.message_id, fallbackText);
+      }
       return res.message_id;
     }
     throw err;
