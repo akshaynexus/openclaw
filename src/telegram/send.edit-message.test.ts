@@ -18,11 +18,13 @@ vi.mock("grammy", () => ({
 }));
 
 import { editMessageTelegram } from "./send.js";
+import { clearSentMessageCache } from "./sent-message-cache.js";
 
 describe("editMessageTelegram", () => {
   beforeEach(() => {
     botApi.editMessageText.mockReset();
     botCtorSpy.mockReset();
+    clearSentMessageCache();
   });
 
   it("keeps existing buttons when buttons is undefined (no reply_markup)", async () => {
@@ -87,5 +89,31 @@ describe("editMessageTelegram", () => {
         reply_markup: { inline_keyboard: [] },
       }),
     );
+  });
+  it("handles 'message is not modified' error gracefully", async () => {
+    botApi.editMessageText.mockRejectedValueOnce(
+      new Error("400: Bad Request: message is not modified"),
+    );
+
+    const result = await editMessageTelegram("123", 1, "hi", {
+      token: "tok",
+      cfg: {},
+    });
+
+    expect(botApi.editMessageText).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, messageId: "1", chatId: "123" });
+  });
+
+  it("skips API call if content is unchanged in cache", async () => {
+    botApi.editMessageText.mockResolvedValue({ message_id: 1, chat: { id: "123" } });
+
+    // First edit - populates cache
+    await editMessageTelegram("123", 1, "hi", { token: "tok", cfg: {} });
+    expect(botApi.editMessageText).toHaveBeenCalledTimes(1);
+
+    // Second edit - should be skipped
+    const result = await editMessageTelegram("123", 1, "hi", { token: "tok", cfg: {} });
+    expect(botApi.editMessageText).toHaveBeenCalledTimes(1); // Still 1
+    expect(result).toEqual({ ok: true, messageId: "1", chatId: "123" });
   });
 });

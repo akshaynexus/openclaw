@@ -26,7 +26,7 @@ import { resolveTelegramFetch } from "./fetch.js";
 import { renderTelegramHtmlText } from "./format.js";
 import { isRecoverableTelegramNetworkError } from "./network-errors.js";
 import { makeProxyFetch } from "./proxy.js";
-import { recordSentMessage } from "./sent-message-cache.js";
+import { isMessageContentUnchanged, recordSentMessage } from "./sent-message-cache.js";
 import { parseTelegramTarget, stripTelegramInternalPrefixes } from "./targets.js";
 import { resolveTelegramVoiceSend } from "./voice.js";
 
@@ -333,6 +333,9 @@ export async function sendMessageTelegram(
       }
       throw wrapChatNotFound(err);
     });
+    if (res?.message_id) {
+      recordSentMessage(chatId, res.message_id, htmlText);
+    }
     return res;
   };
 
@@ -421,7 +424,7 @@ export async function sendMessageTelegram(
     const mediaMessageId = String(result?.message_id ?? "unknown");
     const resolvedChatId = String(result?.chat?.id ?? chatId);
     if (result?.message_id) {
-      recordSentMessage(chatId, result.message_id);
+      recordSentMessage(chatId, result.message_id, htmlCaption);
     }
     recordChannelActivity({
       channel: "telegram",
@@ -463,7 +466,7 @@ export async function sendMessageTelegram(
   const res = await sendTelegramText(text, textParams, opts.plainText);
   const messageId = String(res?.message_id ?? "unknown");
   if (res?.message_id) {
-    recordSentMessage(chatId, res.message_id);
+    // Already recorded inside sendTelegramText helper
   }
   recordChannelActivity({
     channel: "telegram",
@@ -613,6 +616,9 @@ export async function editMessageTelegram(
     accountId: account.accountId,
   });
   const htmlText = renderTelegramHtmlText(text, { textMode, tableMode });
+  if (isMessageContentUnchanged(chatId, messageId, htmlText)) {
+    return { ok: true, messageId: String(messageId), chatId };
+  }
 
   // Reply markup semantics:
   // - buttons === undefined → don't send reply_markup (keep existing)
@@ -635,6 +641,9 @@ export async function editMessageTelegram(
   ).catch(async (err) => {
     // Telegram rejects malformed HTML. Fall back to plain text.
     const errText = formatErrorMessage(err);
+    if (errText.includes("message is not modified")) {
+      return { ok: true, messageId: String(messageId), chatId } as const;
+    }
     if (PARSE_ERR_RE.test(errText)) {
       if (opts.verbose) {
         console.warn(`telegram HTML parse failed, retrying as plain text: ${errText}`);
@@ -654,6 +663,7 @@ export async function editMessageTelegram(
     throw err;
   });
 
+  recordSentMessage(chatId, messageId, htmlText);
   logVerbose(`[telegram] Edited message ${messageId} in chat ${chatId}`);
   return { ok: true, messageId: String(messageId), chatId };
 }
