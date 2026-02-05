@@ -101,10 +101,12 @@ export function handleMessageUpdate(
         chunk = "";
       } else {
         // Content doesn't match buffer - this is a backtrack/rewrite.
-        // Reset buffers and use the new content as truth.
+        // Reset ALL streaming state and use the new content as truth.
         // This prevents garbled output like "errors\nclean" when model rewrites.
         ctx.state.deltaBuffer = "";
         ctx.state.blockBuffer = "";
+        ctx.state.lastStreamedAssistant = undefined;
+        ctx.state.lastStreamedAssistantCleaned = undefined;
         ctx.blockChunker?.reset();
         chunk = content;
       }
