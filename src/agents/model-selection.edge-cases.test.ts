@@ -25,11 +25,6 @@ describe("buildAllowedModelSet edge cases", () => {
 
     const testKey = modelKey("google-antigravity", "gemini-3-pro");
 
-    // FIX: Models in agents.defaults.models are now always allowed
-    console.log("allowedKeys:", [...allowed.allowedKeys]);
-    console.log("testKey:", testKey);
-    console.log("has testKey:", allowed.allowedKeys.has(testKey));
-
     // After fix: the model IS allowed
     expect(allowed.allowedKeys.has(testKey)).toBe(true);
   });
