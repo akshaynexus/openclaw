@@ -2,6 +2,7 @@ import type { Client } from "@buape/carbon";
 import { ChannelType, MessageType } from "@buape/carbon";
 import { Routes } from "discord-api-types/v10";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDiscordMessageHandler } from "./monitor.js";
 import { __resetDiscordChannelInfoCacheForTest } from "./monitor/message-utils.js";
 
 const sendMock = vi.fn();
@@ -59,7 +60,6 @@ describe("discord tool result dispatch", () => {
   it(
     "accepts guild messages when mentionPatterns match",
     async () => {
-      const { createDiscordMessageHandler } = await import("./monitor.js");
       const cfg = {
         agents: {
           defaults: {
@@ -79,7 +79,7 @@ describe("discord tool result dispatch", () => {
           responsePrefix: "PFX",
           groupChat: { mentionPatterns: ["\\bopenclaw\\b"] },
         },
-      } as ReturnType<typeof import("../config/config.js").loadConfig>;
+      } as any;
 
       const handler = createDiscordMessageHandler({
         cfg,
@@ -92,7 +92,7 @@ describe("discord tool result dispatch", () => {
           exit: (code: number): never => {
             throw new Error(`exit ${code}`);
           },
-        } as unknown as any,
+        } as any,
         botUserId: "bot-id",
         guildHistories: new Map(),
         historyLimit: 0,
@@ -101,7 +101,7 @@ describe("discord tool result dispatch", () => {
         replyToMode: "off",
         dmEnabled: true,
         groupDmEnabled: false,
-        guildEntries: { "*": { requireMention: true } },
+        guildEntries: cfg.channels.discord.guilds,
       });
 
       const client = {
@@ -109,7 +109,7 @@ describe("discord tool result dispatch", () => {
           type: ChannelType.GuildText,
           name: "general",
         }),
-      } as unknown as Client;
+      } as any;
 
       await handler(
         {
@@ -125,7 +125,7 @@ describe("discord tool result dispatch", () => {
             mentionedUsers: [],
             mentionedRoles: [],
             author: { id: "u1", bot: false, username: "Ada" },
-          },
+          } as any,
           author: { id: "u1", bot: false, username: "Ada" },
           member: { nickname: "Ada" },
           guild: { id: "g1", name: "Guild" },
@@ -143,7 +143,6 @@ describe("discord tool result dispatch", () => {
   it(
     "accepts guild messages when mentionPatterns match even if another user is mentioned",
     async () => {
-      const { createDiscordMessageHandler } = await import("./monitor.js");
       const cfg = {
         agents: {
           defaults: {
@@ -163,7 +162,7 @@ describe("discord tool result dispatch", () => {
           responsePrefix: "PFX",
           groupChat: { mentionPatterns: ["\\bopenclaw\\b"] },
         },
-      } as ReturnType<typeof import("../config/config.js").loadConfig>;
+      } as any;
 
       const handler = createDiscordMessageHandler({
         cfg,
@@ -176,7 +175,7 @@ describe("discord tool result dispatch", () => {
           exit: (code: number): never => {
             throw new Error(`exit ${code}`);
           },
-        } as unknown as any,
+        } as any,
         botUserId: "bot-id",
         guildHistories: new Map(),
         historyLimit: 0,
@@ -185,7 +184,7 @@ describe("discord tool result dispatch", () => {
         replyToMode: "off",
         dmEnabled: true,
         groupDmEnabled: false,
-        guildEntries: { "*": { requireMention: true } },
+        guildEntries: cfg.channels.discord.guilds,
       });
 
       const client = {
@@ -193,7 +192,7 @@ describe("discord tool result dispatch", () => {
           type: ChannelType.GuildText,
           name: "general",
         }),
-      } as unknown as Client;
+      } as any;
 
       await handler(
         {
@@ -209,7 +208,7 @@ describe("discord tool result dispatch", () => {
             mentionedUsers: [{ id: "u2", bot: false, username: "Bea" }],
             mentionedRoles: [],
             author: { id: "u1", bot: false, username: "Ada" },
-          },
+          } as any,
           author: { id: "u1", bot: false, username: "Ada" },
           member: { nickname: "Ada" },
           guild: { id: "g1", name: "Guild" },
@@ -225,7 +224,6 @@ describe("discord tool result dispatch", () => {
   );
 
   it("accepts guild reply-to-bot messages as implicit mentions", async () => {
-    const { createDiscordMessageHandler } = await import("./monitor.js");
     const cfg = {
       agents: {
         defaults: {
@@ -241,11 +239,11 @@ describe("discord tool result dispatch", () => {
           guilds: { "*": { requireMention: true } },
         },
       },
-    } as ReturnType<typeof import("../config/config.js").loadConfig>;
+    } as any;
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels!.discord,
+      discordConfig: cfg.channels.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -263,7 +261,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: true } },
+      guildEntries: cfg.channels.discord.guilds,
     });
 
     const client = {
@@ -271,7 +269,7 @@ describe("discord tool result dispatch", () => {
         type: ChannelType.GuildText,
         name: "general",
       }),
-    } as unknown as Client;
+    } as any;
 
     await handler(
       {
@@ -315,7 +313,6 @@ describe("discord tool result dispatch", () => {
   });
 
   it("skips thread starter context when disabled", async () => {
-    const { createDiscordMessageHandler } = await import("./monitor.js");
     let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
@@ -345,11 +342,11 @@ describe("discord tool result dispatch", () => {
           },
         },
       },
-    } as ReturnType<typeof import("../config/config.js").loadConfig>;
+    } as any;
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels!.discord,
+      discordConfig: cfg.channels.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -367,7 +364,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: cfg.channels!.discord!.guilds! as any,
+      guildEntries: cfg.channels.discord.guilds,
     });
 
     const threadChannel = {
@@ -387,7 +384,7 @@ describe("discord tool result dispatch", () => {
           timestamp: new Date().toISOString(),
         }),
       },
-    } as unknown as Client;
+    } as any;
 
     await handler(
       {
@@ -417,7 +414,6 @@ describe("discord tool result dispatch", () => {
   });
 
   it("treats forum threads as distinct sessions without channel payloads", async () => {
-    const { createDiscordMessageHandler } = await import("./monitor.js");
     let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
@@ -441,11 +437,11 @@ describe("discord tool result dispatch", () => {
         },
       },
       routing: { allowFrom: [] },
-    } as ReturnType<typeof import("../config/config.js").loadConfig>;
+    } as any;
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels!.discord,
+      discordConfig: cfg.channels.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -463,7 +459,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: false } } as any,
+      guildEntries: cfg.channels.discord.guilds,
     });
 
     const fetchChannel = vi
@@ -487,7 +483,7 @@ describe("discord tool result dispatch", () => {
           timestamp: new Date().toISOString(),
         }),
       },
-    } as unknown as Client;
+    } as any;
 
     await handler(
       {
@@ -519,7 +515,6 @@ describe("discord tool result dispatch", () => {
   });
 
   it("forks thread sessions and injects starter context", async () => {
-    const { createDiscordMessageHandler } = await import("./monitor.js");
     let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
@@ -543,11 +538,11 @@ describe("discord tool result dispatch", () => {
           guilds: { "*": { requireMention: false } },
         },
       },
-    } as ReturnType<typeof import("../config/config.js").loadConfig>;
+    } as any;
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels!.discord,
+      discordConfig: cfg.channels.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -565,7 +560,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: false } } as any,
+      guildEntries: cfg.channels.discord.guilds,
     });
 
     const threadChannel = {
@@ -585,7 +580,7 @@ describe("discord tool result dispatch", () => {
           timestamp: new Date().toISOString(),
         }),
       },
-    } as unknown as Client;
+    } as any;
 
     await handler(
       {
@@ -618,7 +613,6 @@ describe("discord tool result dispatch", () => {
   });
 
   it("scopes thread sessions to the routed agent", async () => {
-    const { createDiscordMessageHandler } = await import("./monitor.js");
     let capturedCtx: any;
     dispatchMock.mockImplementationOnce(async ({ ctx, dispatcher }) => {
       capturedCtx = ctx;
@@ -643,11 +637,11 @@ describe("discord tool result dispatch", () => {
         },
       },
       bindings: [{ agentId: "support", match: { channel: "discord", guildId: "g1" } }],
-    } as ReturnType<typeof import("../config/config.js").loadConfig>;
+    } as any;
 
     const handler = createDiscordMessageHandler({
       cfg,
-      discordConfig: cfg.channels!.discord,
+      discordConfig: cfg.channels.discord,
       accountId: "default",
       token: "token",
       runtime: {
@@ -665,7 +659,7 @@ describe("discord tool result dispatch", () => {
       replyToMode: "off",
       dmEnabled: true,
       groupDmEnabled: false,
-      guildEntries: { "*": { requireMention: false } } as any,
+      guildEntries: cfg.channels.discord.guilds,
     });
 
     const threadChannel = {
@@ -685,7 +679,7 @@ describe("discord tool result dispatch", () => {
           timestamp: new Date().toISOString(),
         }),
       },
-    } as unknown as Client;
+    } as any;
 
     await handler(
       {
