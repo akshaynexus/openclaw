@@ -600,7 +600,7 @@ export const registerTelegramHandlers = ({
         return;
       }
 
-      const modelPickMatch = data.match(/^model_pick:(.+)$/);
+      const modelPickMatch = data.match(/^(?:model_pick|mp):(.+)$/);
       if (modelPickMatch) {
         const modelKey = modelPickMatch[1];
         if (modelKey) {
@@ -656,7 +656,7 @@ export const registerTelegramHandlers = ({
         }
       }
 
-      const modelPageMatch = data.match(/^model_page:(.+):(\d+)$/);
+      const modelPageMatch = data.match(/^(?:model_page|pg):(.+):(\d+)$/);
       if (modelPageMatch) {
         const provider = modelPageMatch[1];
         const page = parseInt(modelPageMatch[2], 10);
@@ -698,7 +698,7 @@ export const registerTelegramHandlers = ({
         return;
       }
 
-      const provPickMatch = data.match(/^prov_pick:(.+)$/);
+      const provPickMatch = data.match(/^(?:prov_pick|pp):(.+)$/);
       if (provPickMatch) {
         const provider = provPickMatch[1];
         const isGroup =
@@ -739,7 +739,7 @@ export const registerTelegramHandlers = ({
         return;
       }
 
-      if (data === "prov_list") {
+      if (data === "prov_list" || data === "pl") {
         const message = await buildProviderPickerMessage({ cfg });
         try {
           await bot.api.editMessageText(chatId, callbackMessage.message_id, message.text, {
