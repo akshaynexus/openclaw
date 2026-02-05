@@ -54,9 +54,7 @@ describe("buildModelPickerMessage", () => {
 
     const firstBtn = rows[0][0];
     expect(firstBtn.text).toBe("test-provider: model-1");
-    expect((firstBtn as { callback_data?: string }).callback_data).toBe(
-      "model_pick:test-provider/model-1",
-    );
+    expect((firstBtn as { callback_data?: string }).callback_data).toBe("mp:test-provider/model-1");
 
     // Navigation row
     const navRow = rows[10];
@@ -66,7 +64,7 @@ describe("buildModelPickerMessage", () => {
     // Back row
     const backRow = rows[11];
     expect(backRow[0].text).toBe("« Back to Providers");
-    expect((backRow[0] as { callback_data?: string }).callback_data).toBe("prov_list");
+    expect((backRow[0] as { callback_data?: string }).callback_data).toBe("pl");
   });
 
   it("renders the second page with navigation", async () => {
@@ -141,13 +139,9 @@ describe("buildProviderPickerMessage", () => {
     // 2 providers + trailing empty row = 3 rows
     expect(rows.length).toBe(3);
     expect(rows[0][0].text).toBe("another-provider (5)");
-    expect((rows[0][0] as { callback_data?: string }).callback_data).toBe(
-      "prov_pick:another-provider",
-    );
+    expect((rows[0][0] as { callback_data?: string }).callback_data).toBe("pp:another-provider");
     expect(rows[1][0].text).toBe("test-provider (25)");
-    expect((rows[1][0] as { callback_data?: string }).callback_data).toBe(
-      "prov_pick:test-provider",
-    );
+    expect((rows[1][0] as { callback_data?: string }).callback_data).toBe("pp:test-provider");
   });
 });
 
