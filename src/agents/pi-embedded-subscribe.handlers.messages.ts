@@ -96,6 +96,11 @@ export function handleMessageUpdate(
         chunk = "";
       } else if (!ctx.state.deltaBuffer.includes(content)) {
         chunk = content;
+      } else {
+        // deltaBuffer includes content as a substring (but neither is a prefix
+        // of the other). Since content is already within deltaBuffer, there's
+        // nothing new to append. Leave chunk as "" — safe because final
+        // delivery uses extractAssistantText, not deltaBuffer.
       }
     }
   }
