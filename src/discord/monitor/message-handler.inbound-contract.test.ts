@@ -126,7 +126,7 @@ describe("discord processDiscordMessage inbound contract", () => {
       data: { guild: { id: "g1", name: "Guild" } },
       client: { rest: {} },
       message: {
-        id: "m1",
+        id: "m2",
         channelId: "c1",
         timestamp: new Date().toISOString(),
         attachments: [],

@@ -53,17 +53,17 @@ describe("buildModelPickerMessage", () => {
     expect(rows.length).toBe(12);
 
     const firstBtn = rows[0][0];
-    expect(firstBtn.text).toBe("test-provider: model-1");
+    expect(firstBtn.text).toBe("model-1");
     expect((firstBtn as { callback_data?: string }).callback_data).toBe("mp:test-provider/model-1");
 
     // Navigation row
     const navRow = rows[10];
     expect(navRow[0].text).toBe("1/3");
-    expect(navRow[1].text).toBe("Next »");
+    expect(navRow[1].text).toBe("Next ➡️");
 
     // Back row
     const backRow = rows[11];
-    expect(backRow[0].text).toBe("« Back to Providers");
+    expect(backRow[0].text).toBe("🔙 Back to Providers");
     expect((backRow[0] as { callback_data?: string }).callback_data).toBe("pl");
   });
 
@@ -78,13 +78,13 @@ describe("buildModelPickerMessage", () => {
     expect(rows.length).toBe(12);
 
     const firstBtn = rows[0][0];
-    expect(firstBtn.text).toBe("test-provider: model-11"); // Start of page 2
+    expect(firstBtn.text).toBe("model-11"); // Start of page 2
 
     // Navigation row
     const navRow = rows[10];
-    expect(navRow[0].text).toBe("« Prev");
+    expect(navRow[0].text).toBe("⬅️ Prev");
     expect(navRow[1].text).toBe("2/3");
-    expect(navRow[2].text).toBe("Next »");
+    expect(navRow[2].text).toBe("Next ➡️");
   });
 
   it("renders the last page", async () => {
@@ -99,11 +99,11 @@ describe("buildModelPickerMessage", () => {
     expect(rows.length).toBe(7);
 
     const firstBtn = rows[0][0];
-    expect(firstBtn.text).toBe("test-provider: model-21");
+    expect(firstBtn.text).toBe("model-21");
 
     // Navigation row
     const navRow = rows[5];
-    expect(navRow[0].text).toBe("« Prev");
+    expect(navRow[0].text).toBe("⬅️ Prev");
     expect(navRow[1].text).toBe("3/3");
   });
 
@@ -119,9 +119,9 @@ describe("buildModelPickerMessage", () => {
 
     // Model 2 is at index 1
     const btn = rows[1][0];
-    expect(btn.text).toBe("✅ test-provider: model-2");
+    expect(btn.text).toBe("✅ model-2");
 
-    expect(result.text).toContain("Current: <code>test-provider/model-2</code>");
+    expect(result.text).toContain("📍 <b>Current:</b> <code>test-provider/model-2</code>");
   });
 });
 
@@ -138,9 +138,9 @@ describe("buildProviderPickerMessage", () => {
 
     // 2 providers + trailing empty row = 3 rows
     expect(rows.length).toBe(3);
-    expect(rows[0][0].text).toBe("another-provider (5)");
+    expect(rows[0][0].text).toBe("📦 another-provider (5)");
     expect((rows[0][0] as { callback_data?: string }).callback_data).toBe("pp:another-provider");
-    expect(rows[1][0].text).toBe("test-provider (25)");
+    expect(rows[1][0].text).toBe("📦 test-provider (25)");
     expect((rows[1][0] as { callback_data?: string }).callback_data).toBe("pp:test-provider");
   });
 });
