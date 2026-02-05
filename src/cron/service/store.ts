@@ -263,7 +263,7 @@ export async function ensureLoaded(
   state.storeLoadedAtMs = state.deps.nowMs();
   state.storeFileMtimeMs = fileMtimeMs;
 
-  if (!opts?.skipRecompute) {
+  if (!opts?.skipRecompute && !opts?.forceReload) {
     recomputeNextRuns(state);
   }
 
