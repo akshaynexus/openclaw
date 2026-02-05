@@ -153,9 +153,12 @@ export const dispatchTelegramMessage = async ({
     if (text.startsWith(lastPartialText)) {
       delta = text.slice(lastPartialText.length);
     } else {
-      // Streaming buffer reset (or non-monotonic stream). Start fresh.
+      // Non-monotonic stream (e.g. sanitizer changed output shape).
+      // Recover by using the full `text` as the new baseline instead of
+      // losing all previously accumulated content.
       draftChunker?.reset();
       draftText = "";
+      delta = text;
     }
     lastPartialText = text;
     if (!delta) {

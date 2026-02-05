@@ -386,7 +386,7 @@ export function formatAssistantErrorText(
   return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw;
 }
 
-export function sanitizeUserFacingText(text: string): string {
+export function sanitizeUserFacingText(text: string, opts?: { streaming?: boolean }): string {
   if (!text) {
     return text;
   }
@@ -426,6 +426,13 @@ export function sanitizeUserFacingText(text: string): string {
       return "LLM request timed out.";
     }
     return formatRawAssistantErrorForUi(trimmed);
+  }
+
+  // Skip duplicate-block collapsing during streaming: the function is stateless
+  // and can produce non-monotonic output as chunk boundaries shift, which causes
+  // the downstream draft stream to lose accumulated text.
+  if (opts?.streaming) {
+    return stripped;
   }
 
   return collapseConsecutiveDuplicateBlocks(stripped);

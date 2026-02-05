@@ -37,4 +37,21 @@ describe("sanitizeUserFacingText", () => {
     const text = "Hello there!\n\nDifferent line.";
     expect(sanitizeUserFacingText(text)).toBe(text);
   });
+
+  it("skips duplicate-block collapsing in streaming mode", () => {
+    const text = "Hello there!\n\nHello there!";
+    // Without streaming: collapses duplicates
+    expect(sanitizeUserFacingText(text)).toBe("Hello there!");
+    // With streaming: preserves text as-is (minus final tags)
+    expect(sanitizeUserFacingText(text, { streaming: true })).toBe(text);
+  });
+
+  it("still strips final tags in streaming mode", () => {
+    expect(sanitizeUserFacingText("<final>Hello</final>", { streaming: true })).toBe("Hello");
+  });
+
+  it("still sanitizes errors in streaming mode", () => {
+    const result = sanitizeUserFacingText("400 Incorrect role information", { streaming: true });
+    expect(result).toContain("Message ordering conflict");
+  });
 });

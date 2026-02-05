@@ -127,7 +127,7 @@ export async function runAgentTurnWithFallback(params: {
         if (!text) {
           return { skip: true };
         }
-        const sanitized = sanitizeUserFacingText(text);
+        const sanitized = sanitizeUserFacingText(text, { streaming: true });
         if (!sanitized.trim()) {
           return { skip: true };
         }
