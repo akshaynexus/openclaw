@@ -24,5 +24,6 @@ export type UsageProviderId =
   | "google-antigravity"
   | "minimax"
   | "openai-codex"
+  | "openrouter"
   | "xiaomi"
   | "zai";

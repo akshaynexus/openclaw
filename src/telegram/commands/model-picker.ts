@@ -90,12 +90,31 @@ export async function buildModelPickerMessage(params: {
     );
   }
 
+  const isOpenRouter = params.provider === "openrouter";
+
   for (const item of items) {
     const key = `${item.provider}/${item.model}`;
     const isSelected = params.currentModel === key;
 
+    let usageLabel = "";
     const usage = findUsageForModel(item.model, usageSnapshot);
-    const usageLabel = usage ? ` · ${Math.max(0, 100 - usage.usedPercent).toFixed(0)}%` : "";
+    const isFree =
+      item.model.toLowerCase().includes(":free") || item.model.toLowerCase().endsWith("free");
+
+    if (usage) {
+      usageLabel = ` · ${Math.max(0, 100 - usage.usedPercent).toFixed(0)}%`;
+    } else if (isOpenRouter) {
+      const credits = usageSnapshot?.windows.find((w) => w.label === "Credits");
+      if (!isFree) {
+        // Paid model on OpenRouter: bounded by credits
+        const remaining = credits ? Math.max(0, 100 - credits.usedPercent) : 0;
+        usageLabel = ` · ${remaining.toFixed(0)}%`;
+      } else {
+        const isFreeTier = usageSnapshot?.windows.some((w) => w.label === "FreeTier");
+        const quota = isFreeTier ? "50/d" : "1k/d";
+        usageLabel = ` · Free (${quota})`;
+      }
+    }
 
     const label = `${item.model}${usageLabel}`;
     const btnLabel = isSelected ? `✅ ${label}` : label;
