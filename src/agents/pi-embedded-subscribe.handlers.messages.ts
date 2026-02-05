@@ -91,16 +91,22 @@ export function handleMessageUpdate(
       // KNOWN: Some providers resend full content on `text_end`.
       // We only append a suffix (or nothing) to keep output monotonic.
       if (content.startsWith(ctx.state.deltaBuffer)) {
+        // Content extends what we have - append the suffix
         chunk = content.slice(ctx.state.deltaBuffer.length);
       } else if (ctx.state.deltaBuffer.startsWith(content)) {
+        // Buffer already contains content - nothing to add
         chunk = "";
-      } else if (!ctx.state.deltaBuffer.includes(content)) {
-        chunk = content;
+      } else if (ctx.state.deltaBuffer.includes(content)) {
+        // Content is a substring of buffer (but not at start) - nothing to add
+        chunk = "";
       } else {
-        // deltaBuffer includes content as a substring (but neither is a prefix
-        // of the other). Since content is already within deltaBuffer, there's
-        // nothing new to append. Leave chunk as "" — safe because final
-        // delivery uses extractAssistantText, not deltaBuffer.
+        // Content doesn't match buffer - this is a backtrack/rewrite.
+        // Reset buffers and use the new content as truth.
+        // This prevents garbled output like "errors\nclean" when model rewrites.
+        ctx.state.deltaBuffer = "";
+        ctx.state.blockBuffer = "";
+        ctx.blockChunker?.reset();
+        chunk = content;
       }
     }
   }
