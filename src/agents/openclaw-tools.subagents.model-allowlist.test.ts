@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { OpenClawConfig } from "../config/config.js";
+import type { ModelCatalogEntry } from "./model-catalog.js";
 
 // Test that subagent model override is correctly applied in agentCommand
 describe("agentCommand model override", () => {
@@ -71,7 +73,7 @@ describe("agentCommand model override", () => {
     const { buildAllowedModelSet, modelKey } = await import("./model-selection.js");
 
     // Config with allowlist that does NOT include our model
-    const cfg = {
+    const cfg: Partial<OpenClawConfig> = {
       agents: {
         defaults: {
           models: {
@@ -83,11 +85,13 @@ describe("agentCommand model override", () => {
     };
 
     // Mock catalog - empty since we're testing allowlist behavior
-    const mockCatalog = [{ id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic" }];
+    const mockCatalog: ModelCatalogEntry[] = [
+      { id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic" },
+    ];
 
     const allowed = buildAllowedModelSet({
-      cfg: cfg as any,
-      catalog: mockCatalog as any,
+      cfg: cfg as OpenClawConfig,
+      catalog: mockCatalog,
       defaultProvider: "anthropic",
       defaultModel: "claude-opus-4-5",
     });
@@ -103,7 +107,7 @@ describe("agentCommand model override", () => {
     const { buildAllowedModelSet, modelKey } = await import("./model-selection.js");
 
     // Config with allowlist that DOES include our model
-    const cfg = {
+    const cfg: Partial<OpenClawConfig> = {
       agents: {
         defaults: {
           models: {
@@ -114,17 +118,19 @@ describe("agentCommand model override", () => {
       },
       models: {
         providers: {
-          "google-antigravity": {}, // Provider is configured
+          "google-antigravity": {},
         },
       },
     };
 
     // Mock catalog
-    const mockCatalog = [{ id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic" }];
+    const mockCatalog: ModelCatalogEntry[] = [
+      { id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic" },
+    ];
 
     const allowed = buildAllowedModelSet({
-      cfg: cfg as any,
-      catalog: mockCatalog as any,
+      cfg: cfg as OpenClawConfig,
+      catalog: mockCatalog,
       defaultProvider: "anthropic",
       defaultModel: "claude-opus-4-5",
     });

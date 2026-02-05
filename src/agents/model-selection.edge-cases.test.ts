@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
+import type { OpenClawConfig } from "../config/config.js";
+import type { ModelCatalogEntry } from "./model-catalog.js";
 import { buildAllowedModelSet, modelKey } from "./model-selection.js";
 
 describe("buildAllowedModelSet edge cases", () => {
   it("model NOT in catalog and provider NOT in models.providers IS NOW allowed (fix for #6295)", async () => {
-    const cfg = {
+    const cfg: Partial<OpenClawConfig> = {
       agents: {
         defaults: {
           models: {
@@ -14,10 +16,10 @@ describe("buildAllowedModelSet edge cases", () => {
       // Note: NO models.providers configured!
     };
 
-    const mockCatalog: any[] = [];
+    const mockCatalog: ModelCatalogEntry[] = [];
 
     const allowed = buildAllowedModelSet({
-      cfg: cfg as any,
+      cfg: cfg as OpenClawConfig,
       catalog: mockCatalog,
       defaultProvider: "anthropic",
       defaultModel: "claude-opus-4-5",
@@ -30,7 +32,7 @@ describe("buildAllowedModelSet edge cases", () => {
   });
 
   it("model in catalog is allowed even without provider config", async () => {
-    const cfg = {
+    const cfg: Partial<OpenClawConfig> = {
       agents: {
         defaults: {
           models: {
@@ -41,12 +43,12 @@ describe("buildAllowedModelSet edge cases", () => {
     };
 
     // Model IS in catalog
-    const mockCatalog: any[] = [
+    const mockCatalog: ModelCatalogEntry[] = [
       { id: "gemini-3-pro", name: "Gemini 3 Pro", provider: "google-antigravity" },
     ];
 
     const allowed = buildAllowedModelSet({
-      cfg: cfg as any,
+      cfg: cfg as OpenClawConfig,
       catalog: mockCatalog,
       defaultProvider: "anthropic",
       defaultModel: "claude-opus-4-5",
@@ -59,7 +61,7 @@ describe("buildAllowedModelSet edge cases", () => {
   });
 
   it("model with provider in models.providers is allowed", async () => {
-    const cfg = {
+    const cfg: Partial<OpenClawConfig> = {
       agents: {
         defaults: {
           models: {
@@ -74,10 +76,10 @@ describe("buildAllowedModelSet edge cases", () => {
       },
     };
 
-    const mockCatalog: any[] = [];
+    const mockCatalog: ModelCatalogEntry[] = [];
 
     const allowed = buildAllowedModelSet({
-      cfg: cfg as any,
+      cfg: cfg as OpenClawConfig,
       catalog: mockCatalog,
       defaultProvider: "anthropic",
       defaultModel: "claude-opus-4-5",
