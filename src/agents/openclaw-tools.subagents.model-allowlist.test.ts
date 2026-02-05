@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 // Test that subagent model override is correctly applied in agentCommand
 describe("agentCommand model override", () => {
@@ -21,7 +21,6 @@ describe("agentCommand model override", () => {
   it("model override is used when allowlist is empty", async () => {
     const { loadSessionStore, updateSessionStore } = await import("../config/sessions/store.js");
     const { clearSessionStoreCacheForTest } = await import("../config/sessions/store.js");
-    const { buildAllowedModelSet, modelKey } = await import("./model-selection.js");
 
     clearSessionStoreCacheForTest();
 
@@ -68,9 +67,8 @@ describe("agentCommand model override", () => {
     expect(storedProviderOverride).toBe(testProvider);
   });
 
-  it("model override is blocked when not in allowlist", async () => {
+  it("model NOT in allowlist is still blocked (model not configured at all)", async () => {
     const { buildAllowedModelSet, modelKey } = await import("./model-selection.js");
-    const { loadModelCatalog } = await import("./model-catalog.js");
 
     // Config with allowlist that does NOT include our model
     const cfg = {
@@ -94,13 +92,11 @@ describe("agentCommand model override", () => {
       defaultModel: "claude-opus-4-5",
     });
 
-    // Check if our model is allowed
+    // Check if a model NOT in config is allowed
     const testKey = modelKey("google-antigravity", "gemini-3-pro");
     expect(allowed.allowAny).toBe(false);
+    // Model is NOT in agents.defaults.models, so it's blocked
     expect(allowed.allowedKeys.has(testKey)).toBe(false);
-
-    // This is the bug! The model is in config but not in the allowedKeys
-    // because it's not in the catalog AND google-antigravity is not a configured provider
   });
 
   it("model override works when model is in allowlist", async () => {
