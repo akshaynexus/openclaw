@@ -183,8 +183,11 @@ function inferDeliveryFromSessionKey(agentSessionKey?: string): CronDelivery | n
     return null;
   }
   const head = parts[0]?.trim().toLowerCase();
+
+  // If it's a main/internal session, we return a mode: announce without a target,
+  // letting the gateway resolve it via the agent's main session 'lastTo'.
   if (!head || head === "main" || head === "subagent" || head === "acp") {
-    return null;
+    return { mode: "announce" };
   }
 
   // buildAgentPeerSessionKey encodes peers as:
@@ -327,8 +330,10 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
             const hasTarget =
               (typeof delivery?.channel === "string" && delivery.channel.trim()) ||
               (typeof delivery?.to === "string" && delivery.to.trim());
-            const shouldInfer =
-              (deliveryValue == null || delivery) && mode !== "none" && !hasTarget;
+
+            // For agentTurn, we always want to announce by default unless mode is explicitly "none"
+            const shouldInfer = (deliveryValue == null || delivery) && mode !== "none";
+
             if (shouldInfer) {
               const inferred = inferDeliveryFromSessionKey(opts.agentSessionKey);
               if (inferred) {
@@ -336,6 +341,12 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
                   ...delivery,
                   ...inferred,
                 } satisfies CronDelivery;
+              } else if (!hasTarget && mode !== "none") {
+                // Fallback: at least set mode to announce so it tries to use "last"
+                (job as { delivery?: unknown }).delivery = {
+                  mode: "announce",
+                  ...delivery,
+                };
               }
             }
           }

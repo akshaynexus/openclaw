@@ -82,7 +82,7 @@ export function createSessionsSpawnTool(opts?: {
     label: "Sessions",
     name: "sessions_spawn",
     description:
-      "Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.",
+      "Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat. Supports custom models (e.g. 'google/gemini-2.0-flash') and specific agent IDs.",
     parameters: SessionsSpawnToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

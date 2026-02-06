@@ -335,7 +335,7 @@ async function waitForSubagentCompletion(runId: string, waitTimeoutMs: number) {
       },
       timeoutMs: timeoutMs + 10_000,
     });
-    if (wait?.status !== "ok" && wait?.status !== "error") {
+    if (wait?.status !== "ok" && wait?.status !== "error" && wait?.status !== "timeout") {
       return;
     }
     const entry = subagentRuns.get(runId);
@@ -356,8 +356,12 @@ async function waitForSubagentCompletion(runId: string, waitTimeoutMs: number) {
       mutated = true;
     }
     const waitError = typeof wait.error === "string" ? wait.error : undefined;
-    entry.outcome =
-      wait.status === "error" ? { status: "error", error: waitError } : { status: "ok" };
+    if (wait.status === "timeout") {
+      entry.outcome = { status: "timeout" };
+    } else {
+      entry.outcome =
+        wait.status === "error" ? { status: "error", error: waitError } : { status: "ok" };
+    }
     mutated = true;
     if (mutated) {
       persistSubagentRuns();

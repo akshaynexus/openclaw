@@ -134,7 +134,7 @@ export const formatContextUsageShort = (
   contextTokens: number | null | undefined,
 ) => `Context ${formatTokens(total, contextTokens ?? null)}`;
 
-const formatAge = (ms?: number | null) => {
+export const formatAge = (ms?: number | null) => {
   if (!ms || ms < 0) {
     return "unknown";
   }

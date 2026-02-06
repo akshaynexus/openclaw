@@ -93,6 +93,8 @@ export type SessionConfig = {
   typingMode?: TypingMode;
   mainKey?: string;
   sendPolicy?: SessionSendPolicyConfig;
+  /** Isolation: for DMs, use the sender ID as part of the agentId (effectively isolating workspaces per user). */
+  autoIsolateDms?: boolean;
   agentToAgent?: {
     /** Max ping-pong turns between requester/target (0–5). Default: 5. */
     maxPingPongTurns?: number;

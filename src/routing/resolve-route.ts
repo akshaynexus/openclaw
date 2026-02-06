@@ -256,5 +256,12 @@ export function resolveAgentRoute(input: ResolveAgentRouteInput): ResolvedAgentR
     return choose(anyAccountMatch.agentId, "binding.channel");
   }
 
+  const autoIsolateDms = input.cfg.session?.autoIsolateDms === true;
+  if (autoIsolateDms && peer?.kind === "dm") {
+    const baseAgentId = resolveDefaultAgentId(input.cfg);
+    const isolatedAgentId = `${baseAgentId}-${peer.id}`;
+    return choose(isolatedAgentId, "default");
+  }
+
   return choose(resolveDefaultAgentId(input.cfg), "default");
 }

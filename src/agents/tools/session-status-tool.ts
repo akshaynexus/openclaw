@@ -4,6 +4,7 @@ import type { AnyAgentTool } from "./common.js";
 import { normalizeGroupActivation } from "../../auto-reply/group-activation.js";
 import { getFollowupQueueDepth, resolveQueueSettings } from "../../auto-reply/reply/queue.js";
 import { buildStatusMessage } from "../../auto-reply/status.js";
+import { formatAge } from "../../auto-reply/status.js";
 import { loadConfig } from "../../config/config.js";
 import {
   loadSessionStore,
@@ -40,6 +41,7 @@ import {
   resolveDefaultModelForAgent,
   resolveModelRefFromString,
 } from "../model-selection.js";
+import { listSubagentRunsForRequester, type SubagentRunRecord } from "../subagent-registry.js";
 import { readStringParam } from "./common.js";
 import {
   shouldResolveSessionIdInput,
@@ -430,6 +432,20 @@ export function createSessionStatusTool(opts?: {
         typeof agentDefaults.model === "object" && agentDefaults.model
           ? { ...agentDefaults.model, primary: defaultLabel }
           : { primary: defaultLabel };
+      const subagentRuns = listSubagentRunsForRequester(resolved.key);
+      const activeSubagents = subagentRuns.filter((run: SubagentRunRecord) => !run.endedAt);
+      let subagentsLine: string | undefined;
+      const now = Date.now();
+      if (activeSubagents.length > 0) {
+        const parts = activeSubagents.map((run: SubagentRunRecord) => {
+          const label = run.label || run.task || "task";
+          const shortLabel = label.length > 20 ? `${label.slice(0, 17)}...` : label;
+          const age = formatAge(now - run.createdAt);
+          return `${shortLabel} (${age})`;
+        });
+        subagentsLine = `🤖 Subagents: ${parts.join(" · ")}`;
+      }
+
       const statusText = buildStatusMessage({
         config: cfg,
         agent: {
@@ -447,6 +463,7 @@ export function createSessionStatusTool(opts?: {
         }),
         usageLine,
         timeLine,
+        subagentsLine,
         queue: {
           mode: queueSettings.mode,
           depth: queueDepth,

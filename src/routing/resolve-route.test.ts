@@ -225,6 +225,19 @@ describe("resolveAgentRoute", () => {
     expect(route.agentId).toBe("home");
     expect(route.sessionKey).toBe("agent:home:main");
   });
+
+  test("autoIsolateDms isolates agents per DM user", () => {
+    const cfg: OpenClawConfig = {
+      session: { autoIsolateDms: true },
+    };
+    const route = resolveAgentRoute({
+      cfg,
+      channel: "whatsapp",
+      peer: { kind: "dm", id: "user123" },
+    });
+    expect(route.agentId).toBe("main-user123");
+    expect(route.sessionKey).toBe("agent:main-user123:main");
+  });
 });
 
 test("dmScope=per-account-channel-peer isolates DM sessions per account, channel and sender", () => {

@@ -8,7 +8,7 @@ import {
   stripThinkingTagsFromText,
 } from "../pi-embedded-utils.js";
 
-export type SessionKind = "main" | "group" | "cron" | "hook" | "node" | "other";
+export type SessionKind = "main" | "group" | "cron" | "hook" | "node" | "subagent" | "other";
 
 export type SessionListDeliveryContext = {
   channel?: string;
@@ -307,11 +307,11 @@ export function classifySessionKind(params: {
   if (key.startsWith("node-") || key.startsWith("node:")) {
     return "node";
   }
-  if (params.gatewayKind === "group") {
-    return "group";
-  }
   if (key.includes(":group:") || key.includes(":channel:")) {
     return "group";
+  }
+  if (key.includes(":subagent:")) {
+    return "subagent";
   }
   return "other";
 }
@@ -322,7 +322,12 @@ export function deriveChannel(params: {
   channel?: string | null;
   lastChannel?: string | null;
 }): string {
-  if (params.kind === "cron" || params.kind === "hook" || params.kind === "node") {
+  if (
+    params.kind === "cron" ||
+    params.kind === "hook" ||
+    params.kind === "node" ||
+    params.kind === "subagent"
+  ) {
     return "internal";
   }
   const channel = normalizeKey(params.channel ?? undefined);
