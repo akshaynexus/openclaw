@@ -38,6 +38,8 @@ describe("workspace path resolution", () => {
         const contents = "workspace read ok";
         await fs.writeFile(path.join(workspaceDir, testFile), contents, "utf8");
 
+        const prevCwd = process.cwd();
+        process.chdir(otherDir);
         const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(otherDir);
         try {
           const tools = createOpenClawCodingTools({ workspaceDir });
@@ -47,6 +49,7 @@ describe("workspace path resolution", () => {
           const result = await readTool?.execute("ws-read", { path: testFile });
           expect(getTextContent(result)).toContain(contents);
         } finally {
+          cwdSpy.mockRestore();
           try {
             process.chdir(prevCwd);
           } catch (err) {
@@ -67,6 +70,8 @@ describe("workspace path resolution", () => {
         const testFile = "write.txt";
         const contents = "workspace write ok";
 
+        const prevCwd = process.cwd();
+        process.chdir(otherDir);
         const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(otherDir);
         try {
           const tools = createOpenClawCodingTools({ workspaceDir });
@@ -81,6 +86,7 @@ describe("workspace path resolution", () => {
           const written = await fs.readFile(path.join(workspaceDir, testFile), "utf8");
           expect(written).toBe(contents);
         } finally {
+          cwdSpy.mockRestore();
           try {
             process.chdir(prevCwd);
           } catch (err) {
@@ -100,6 +106,8 @@ describe("workspace path resolution", () => {
         const testFile = "edit.txt";
         await fs.writeFile(path.join(workspaceDir, testFile), "hello world", "utf8");
 
+        const prevCwd = process.cwd();
+        process.chdir(otherDir);
         const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(otherDir);
         try {
           const tools = createOpenClawCodingTools({ workspaceDir });
@@ -115,6 +123,7 @@ describe("workspace path resolution", () => {
           const updated = await fs.readFile(path.join(workspaceDir, testFile), "utf8");
           expect(updated).toBe("hello openclaw");
         } finally {
+          cwdSpy.mockRestore();
           try {
             process.chdir(prevCwd);
           } catch (err) {
