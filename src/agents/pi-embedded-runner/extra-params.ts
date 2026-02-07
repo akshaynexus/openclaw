@@ -194,7 +194,12 @@ function createOpenRouterReasoningContentWrapper(baseStreamFn: StreamFn | undefi
 function createOpenRouterCacheControlWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
   const underlying = baseStreamFn ?? streamSimple;
   return (model, context, options) => {
-    if (model?.provider !== "openrouter") {
+    // Only apply cache_control for Anthropic models on OpenRouter
+    // Other models (Moonshot, Qwen, etc.) don't support cache_control and would fail
+    const isAnthropicOnOpenRouter =
+      model?.provider === "openrouter" &&
+      (model?.id?.startsWith("anthropic/") || model?.id?.includes("/claude"));
+    if (!isAnthropicOnOpenRouter) {
       return underlying(model, context, options);
     }
 

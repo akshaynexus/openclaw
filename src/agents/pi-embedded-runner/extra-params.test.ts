@@ -192,7 +192,7 @@ describe("OpenRouter cache control", () => {
         { role: "user", content: "user" },
       ],
     };
-    const model = { provider: "openrouter" } as any;
+    const model = { provider: "openrouter", id: "anthropic/claude-3-5-sonnet" } as any;
 
     agent.streamFn!(model, context, {});
 
@@ -214,7 +214,7 @@ describe("OpenRouter cache control", () => {
       messages: [{ role: "user", content: "user" }],
       systemPrompt: "sys string",
     };
-    const model = { provider: "openrouter" } as any;
+    const model = { provider: "openrouter", id: "anthropic/claude-3-5-sonnet" } as any;
 
     agent.streamFn!(model, context, {});
 
@@ -241,7 +241,7 @@ describe("OpenRouter cache control", () => {
       messages: [],
       systemPrompt: fullPrompt,
     };
-    const model = { provider: "openrouter" } as any;
+    const model = { provider: "openrouter", id: "anthropic/claude-3-5-sonnet" } as any;
 
     agent.streamFn!(model, context, {});
 
@@ -261,5 +261,30 @@ describe("OpenRouter cache control", () => {
       content: "# Project Context\n\nDynamic file content...",
       cache_control: { type: "ephemeral" },
     });
+  });
+
+  it("does NOT inject cache_control for non-Anthropic models on OpenRouter", async () => {
+    const baseFn = vi.fn((_model, _ctx, _opts) => {
+      return { push: vi.fn(), end: vi.fn() } as never;
+    });
+    const agent = { streamFn: baseFn };
+
+    const { applyExtraParamsToAgent } = await import("./extra-params.js");
+    applyExtraParamsToAgent(agent, undefined, "openrouter", "moonshotai/kimi-k2");
+
+    const context = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "user" },
+      ],
+    };
+    const model = { provider: "openrouter", id: "moonshotai/kimi-k2" } as any;
+
+    agent.streamFn!(model, context, {});
+
+    expect(baseFn).toHaveBeenCalled();
+    const callCtx = baseFn.mock.calls[0][1] as any;
+    // Non-Anthropic models should NOT have cache_control
+    expect(callCtx.messages[0].cache_control).toBeUndefined();
   });
 });
