@@ -413,6 +413,26 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
           ? !discordConfig.blockStreaming
           : undefined,
       onModelSelected,
+      onFallback: async (error, failedModel) => {
+        await deliverDiscordReply({
+          replies: [
+            {
+              text: `\u26a0\ufe0f **Model Failed:** \`${failedModel.model}\` failed.\nReason: ${error.message}\nRetrying...`,
+            },
+          ],
+          target: deliverTarget,
+          token,
+          accountId,
+          rest: client.rest,
+          runtime,
+          replyToId: replyReference.use(),
+          textLimit,
+          maxLinesPerMessage: discordConfig?.maxLinesPerMessage,
+          tableMode,
+          chunkMode: resolveChunkMode(cfg, "discord", accountId),
+        });
+        replyReference.markSent();
+      },
     },
   });
   markDispatchIdle();

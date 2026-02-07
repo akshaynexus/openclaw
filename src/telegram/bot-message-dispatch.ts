@@ -103,14 +103,15 @@ export const dispatchTelegramMessage = async ({
       (typeof draftThreadId === "number" && topicsEnabled));
   const draftStream = canStreamDraft
     ? createTelegramDraftStream({
-      api: bot.api,
-      chatId,
-      draftId: msg.message_id || Date.now(),
-      maxChars: draftMaxChars,
-      thread: threadSpec,
-      log: logVerbose,
-      warn: logVerbose,
-    })
+        api: bot.api,
+        chatId,
+        draftId: msg.message_id || Date.now(),
+        maxChars: draftMaxChars,
+        thread: threadSpec,
+        parse_mode: "HTML",
+        log: logVerbose,
+        warn: logVerbose,
+      })
     : undefined;
   const draftChunking =
     draftStream && streamMode === "block"
@@ -121,19 +122,27 @@ export const dispatchTelegramMessage = async ({
   let draftText = "";
   let draftReasoning = "";
   let draftToolStatus = "";
+  let draftModelStatus = "";
+
+  const escapeHtml = (unsafe: string) => {
+    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  };
 
   const updateDraftCombined = () => {
     if (!draftStream) {
       return;
     }
     let combined = "";
+    if (draftModelStatus) {
+      combined += `${draftModelStatus}\n\n`;
+    }
     if (draftToolStatus) {
       combined += `${draftToolStatus}\n\n`;
     }
     if (draftReasoning) {
-      combined += `<think>${draftReasoning}</think>\n`;
+      combined += `<blockquote>${escapeHtml(draftReasoning)}</blockquote>\n`;
     }
-    combined += draftText;
+    combined += escapeHtml(draftText);
     draftStream.update(combined.trim());
   };
   const updateDraftFromPartial = (text?: string) => {
@@ -327,6 +336,7 @@ export const dispatchTelegramMessage = async ({
             draftStream?.stop();
             // Clear status before final reply
             draftToolStatus = "";
+            draftModelStatus = "";
             // Clean up placeholder before sending final reply
             await placeholder.cleanup();
           }
@@ -389,22 +399,48 @@ export const dispatchTelegramMessage = async ({
         onPartialReply: draftStream ? (payload) => updateDraftFromPartial(payload.text) : undefined,
         onReasoningStream: draftStream
           ? (payload) => {
-            if (payload.text) {
-              // strip the "Reasoning:" prefix since we use <think> tags
-              draftReasoning = payload.text.replace(/^Reasoning:\s*/i, "").trim();
-              updateDraftCombined();
+              if (payload.text) {
+                // strip the "Reasoning:" prefix since we use <think> tags (now blockquote)
+                draftReasoning = payload.text.replace(/^Reasoning:\s*/i, "").trim();
+                updateDraftCombined();
+              }
             }
-          }
           : undefined,
         onModelSelected: (ctx) => {
           prefixContext.onModelSelected(ctx);
+          if (draftStream) {
+            draftModelStatus = `\ud83e\udd16 Using <b>${escapeHtml(ctx.model)}</b>`;
+            updateDraftCombined();
+          }
+        },
+        onFallback: async (error, failedModel) => {
+          const msg = `\u26a0\ufe0f <b>Model Failed:</b> ${escapeHtml(failedModel.model)} failed.\nReason: ${escapeHtml(error.message)}\nRetrying...`;
+          await sendMessageTelegram(String(chatId), msg, {
+            token: opts.token,
+            messageThreadId: threadSpec.id,
+            textMode: "html",
+          });
         },
         onToolStart: async (toolName, args) => {
           if (placeholderConfig.enabled) {
             await placeholder.onTool(toolName, args);
           }
           if (draftStream) {
-            draftToolStatus = `\ud83d\udee0\ufe0f *Running ${toolName}*...`;
+            draftToolStatus = `\ud83d\udee0\ufe0f <b>Running ${escapeHtml(toolName)}</b>...`;
+            updateDraftCombined();
+          }
+        },
+        onToolUpdate: async (toolName) => {
+          if (draftStream) {
+            draftToolStatus = `\ud83d\udee0\ufe0f <b>Running ${escapeHtml(toolName)}</b>...`;
+            updateDraftCombined();
+          }
+        },
+        onToolEnd: async (res) => {
+          if (draftStream) {
+            const icon = res.isError ? "\u26a0\ufe0f" : "\u2705";
+            const status = res.isError ? "failed" : "finished";
+            draftToolStatus = `${icon} <b>${escapeHtml(res.toolName)}</b> ${status}...`;
             updateDraftCombined();
           }
         },

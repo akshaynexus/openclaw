@@ -257,6 +257,39 @@ export async function monitorLineProvider(
           },
           replyOptions: {
             onModelSelected,
+            onFallback: async (error, failedModel) => {
+              // Line doesn't have a specific "alert" mechanism, so we just send a push message
+              // if it happens. Note: Line is not streaming so this might just be ignored
+              // or sent if the model fails during reasoning/processing.
+              const body = {
+                text: `\u26a0\ufe0f Model Failed: ${failedModel.model} failed.\nReason: ${error.message}\nRetrying...`,
+              };
+              await deliverLineAutoReply({
+                payload: body,
+                lineData: {},
+                to: ctxPayload.From,
+                replyToken: undefined,
+                replyTokenUsed: true,
+                accountId: ctx.accountId,
+                textLimit,
+                deps: {
+                  buildTemplateMessageFromPayload,
+                  processLineMessage,
+                  chunkMarkdownText,
+                  sendLineReplyChunks,
+                  replyMessageLine,
+                  pushMessageLine,
+                  pushTextMessageWithQuickReplies,
+                  createQuickReplyItems,
+                  createTextMessageWithQuickReplies,
+                  pushMessagesLine,
+                  createFlexMessage,
+                  createImageMessage,
+                  createLocationMessage,
+                  onReplyError: () => {},
+                },
+              });
+            },
           },
         });
 

@@ -19,6 +19,7 @@ export function createTelegramDraftStream(params: {
   maxChars?: number;
   thread?: TelegramThreadSpec | null;
   throttleMs?: number;
+  parse_mode?: "HTML" | "MarkdownV2" | "Markdown";
   log?: (message: string) => void;
   warn?: (message: string) => void;
 }): TelegramDraftStream {
@@ -58,10 +59,14 @@ export function createTelegramDraftStream(params: {
     lastSentAt = Date.now();
     try {
       if (sentMessageId) {
-        await params.api.editMessageText(chatId, sentMessageId, trimmed);
+        await params.api.editMessageText(chatId, sentMessageId, trimmed, {
+          ...threadParams,
+          parse_mode: params.parse_mode,
+        });
       } else {
         const msg = await params.api.sendMessage(chatId, trimmed, {
           ...threadParams,
+          parse_mode: params.parse_mode,
         });
         sentMessageId = msg.message_id;
       }

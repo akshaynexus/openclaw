@@ -541,4 +541,31 @@ describe("runWithModelFallback", () => {
     expect(result.provider).toBe("openai");
     expect(result.model).toBe("gpt-4.1-mini");
   });
+
+  it("calls onError callback when a model fails and triggers fallback", async () => {
+    const cfg = makeCfg();
+    const error = Object.assign(new Error("rate limit"), { status: 429 });
+    const run = vi.fn().mockRejectedValueOnce(error).mockResolvedValueOnce("ok");
+    const onError = vi.fn();
+
+    const result = await runWithModelFallback({
+      cfg,
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      run,
+      onError,
+    });
+
+    expect(result.result).toBe("ok");
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        error: expect.any(Error),
+        attempt: 1,
+        total: 2,
+      }),
+    );
+  });
 });
