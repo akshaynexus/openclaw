@@ -21,10 +21,12 @@ import { logAckFailure, logTypingFailure } from "../channels/logging.js";
 import { createReplyPrefixContext } from "../channels/reply-prefix.js";
 import { createTypingCallbacks } from "../channels/typing.js";
 import { resolveMarkdownTableMode } from "../config/markdown-tables.js";
+import { resolveStorePath, loadSessionStore } from "../config/sessions.js";
 import { danger, logVerbose } from "../globals.js";
 import { deliverReplies } from "./bot/delivery.js";
 import { resolveTelegramDraftStreamingChunking } from "./draft-chunking.js";
 import { createTelegramDraftStream } from "./draft-stream.js";
+import { markdownToTelegramHtml } from "./format.js";
 import { sendMessageTelegram, deleteMessageTelegram, editMessageTelegram } from "./send.js";
 import { cacheSticker, describeStickerImage } from "./sticker-cache.js";
 
@@ -123,6 +125,16 @@ export const dispatchTelegramMessage = async ({
   let draftReasoning = "";
   let draftToolStatus = "";
   let draftModelStatus = "";
+  let isStreaming = true;
+
+  const sessionStorePath = resolveStorePath(cfg.session?.store, {
+    agentId: route.agentId,
+  });
+  const sessionRecord = loadSessionStore(sessionStorePath);
+  const sessionEntry = sessionRecord[context.ctxPayload?.SessionKey ?? ""];
+  let lastShownModel = sessionEntry?.model
+    ? `${sessionEntry.modelProvider}/${sessionEntry.model}`
+    : "";
 
   const escapeHtml = (unsafe: string) => {
     return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -139,10 +151,30 @@ export const dispatchTelegramMessage = async ({
     if (draftToolStatus) {
       combined += `${draftToolStatus}\n\n`;
     }
-    if (draftReasoning) {
-      combined += `<blockquote>${escapeHtml(draftReasoning)}</blockquote>\n`;
+
+    // Show thinking indicator if we're streaming and either:
+    // 1. We have no content at all (initial thinking)
+    // 2. We just finished a tool and are waiting for the AI to process the result
+    const justFinishedTool =
+      draftToolStatus.includes("finished") || draftToolStatus.includes("failed");
+    if (isStreaming && !draftText && !draftReasoning && (!draftToolStatus || justFinishedTool)) {
+      combined += "<i>Thinking...</i>";
     }
-    combined += escapeHtml(draftText);
+
+    if (draftReasoning) {
+      // Use blockquote for reasoning
+      combined += `<blockquote>${markdownToTelegramHtml(draftReasoning)}</blockquote>\n`;
+    }
+
+    if (draftText) {
+      combined += markdownToTelegramHtml(draftText);
+    }
+
+    // Add a blinking cursor (dot) if we're still streaming content
+    if (isStreaming && (draftText || draftReasoning)) {
+      combined += " ●";
+    }
+
     draftStream.update(combined.trim());
   };
   const updateDraftFromPartial = (text?: string) => {
@@ -191,6 +223,7 @@ export const dispatchTelegramMessage = async ({
     if (!draftStream) {
       return;
     }
+    isStreaming = false;
     if (draftChunker?.hasBuffered()) {
       draftChunker.drain({
         force: true,
@@ -366,6 +399,7 @@ export const dispatchTelegramMessage = async ({
           }
         },
         onError: (err, info) => {
+          isStreaming = false;
           runtime.error?.(danger(`telegram ${info.kind} reply failed: ${String(err)}`));
           // Also notify user about delivery failures if they are critical
           if (info.kind === "final" && !deliveryState.delivered) {
@@ -409,8 +443,13 @@ export const dispatchTelegramMessage = async ({
         onModelSelected: (ctx) => {
           prefixContext.onModelSelected(ctx);
           if (draftStream) {
-            draftModelStatus = `\ud83e\udd16 Using <b>${escapeHtml(ctx.model)}</b>`;
-            updateDraftCombined();
+            // Only show model info if it changed from the last shown model
+            const modelKey = `${ctx.provider}/${ctx.model}`;
+            if (modelKey !== lastShownModel) {
+              draftModelStatus = `\ud83e\udd16 Using <b>${escapeHtml(ctx.model)}</b>`;
+              updateDraftCombined();
+            }
+            lastShownModel = modelKey;
           }
         },
         onFallback: async (error, failedModel) => {
@@ -426,19 +465,27 @@ export const dispatchTelegramMessage = async ({
             await placeholder.onTool(toolName, args);
           }
           if (draftStream) {
-            draftToolStatus = `\ud83d\udee0\ufe0f <b>Running ${escapeHtml(toolName)}</b>...`;
+            const argsStr =
+              args && Object.keys(args).length > 0
+                ? `: <code>${escapeHtml(JSON.stringify(args))}</code>`
+                : "";
+            draftToolStatus = `🛠️ <b>Running ${escapeHtml(toolName)}</b>${argsStr}...`;
             updateDraftCombined();
           }
         },
-        onToolUpdate: async (toolName) => {
+        onToolUpdate: async (toolName, args) => {
           if (draftStream) {
-            draftToolStatus = `\ud83d\udee0\ufe0f <b>Running ${escapeHtml(toolName)}</b>...`;
+            const argsStr =
+              args && Object.keys(args).length > 0
+                ? `: <code>${escapeHtml(JSON.stringify(args))}</code>`
+                : "";
+            draftToolStatus = `🛠️ <b>Running ${escapeHtml(toolName)}</b>${argsStr}...`;
             updateDraftCombined();
           }
         },
         onToolEnd: async (res) => {
           if (draftStream) {
-            const icon = res.isError ? "\u26a0\ufe0f" : "\u2705";
+            const icon = res.isError ? "⚠️" : "✅";
             const status = res.isError ? "failed" : "finished";
             draftToolStatus = `${icon} <b>${escapeHtml(res.toolName)}</b> ${status}...`;
             updateDraftCombined();
