@@ -125,6 +125,8 @@ export const dispatchTelegramMessage = async ({
   let draftReasoning = "";
   let draftToolStatus = "";
   let draftModelStatus = "";
+  let lastToolName = "";
+  let lastToolArgs = "";
   let isStreaming = true;
 
   const sessionStorePath = resolveStorePath(cfg.session?.store, {
@@ -162,8 +164,8 @@ export const dispatchTelegramMessage = async ({
     }
 
     if (draftReasoning) {
-      // Use blockquote for reasoning
-      combined += `<blockquote>${markdownToTelegramHtml(draftReasoning)}</blockquote>\n`;
+      // Use markdownToTelegramHtml which already uses <blockquote expandable> for thoughts/reasoning
+      combined += `${markdownToTelegramHtml(draftReasoning)}\n`;
     }
 
     if (draftText) {
@@ -469,6 +471,8 @@ export const dispatchTelegramMessage = async ({
               args && Object.keys(args).length > 0
                 ? `: <code>${escapeHtml(JSON.stringify(args))}</code>`
                 : "";
+            lastToolName = toolName;
+            lastToolArgs = argsStr;
             draftToolStatus = `🛠️ <b>Running ${escapeHtml(toolName)}</b>${argsStr}...`;
             updateDraftCombined();
           }
@@ -479,6 +483,8 @@ export const dispatchTelegramMessage = async ({
               args && Object.keys(args).length > 0
                 ? `: <code>${escapeHtml(JSON.stringify(args))}</code>`
                 : "";
+            lastToolName = toolName;
+            lastToolArgs = argsStr;
             draftToolStatus = `🛠️ <b>Running ${escapeHtml(toolName)}</b>${argsStr}...`;
             updateDraftCombined();
           }
@@ -487,7 +493,8 @@ export const dispatchTelegramMessage = async ({
           if (draftStream) {
             const icon = res.isError ? "⚠️" : "✅";
             const status = res.isError ? "failed" : "finished";
-            draftToolStatus = `${icon} <b>${escapeHtml(res.toolName)}</b> ${status}...`;
+            const argsSuffix = lastToolName === res.toolName ? lastToolArgs : "";
+            draftToolStatus = `${icon} <b>${escapeHtml(res.toolName)}</b> ${status}${argsSuffix}...`;
             updateDraftCombined();
           }
         },
