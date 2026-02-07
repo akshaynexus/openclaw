@@ -175,3 +175,91 @@ describe("transformDeveloperRole", () => {
     expect(result[2].role).toBe("user");
   });
 });
+
+describe("OpenRouter cache control", () => {
+  it("injects cache_control into system messages for OpenRouter provider", async () => {
+    const baseFn = vi.fn((_model, _ctx, _opts) => {
+      return { push: vi.fn(), end: vi.fn() } as never;
+    });
+    const agent = { streamFn: baseFn };
+
+    const { applyExtraParamsToAgent } = await import("./extra-params.js");
+    applyExtraParamsToAgent(agent, undefined, "openrouter", "anthropic/claude-3-5-sonnet");
+
+    const context = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "user" },
+      ],
+    };
+    const model = { provider: "openrouter" } as any;
+
+    agent.streamFn!(model, context, {});
+
+    expect(baseFn).toHaveBeenCalled();
+    const callCtx = baseFn.mock.calls[0][1] as any;
+    expect(callCtx.messages[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("converts context.systemPrompt to message with cache_control", async () => {
+    const baseFn = vi.fn((_model, _ctx, _opts) => {
+      return { push: vi.fn(), end: vi.fn() } as never;
+    });
+    const agent = { streamFn: baseFn };
+
+    const { applyExtraParamsToAgent } = await import("./extra-params.js");
+    applyExtraParamsToAgent(agent, undefined, "openrouter", "anthropic/claude-3-5-sonnet");
+
+    const context = {
+      messages: [{ role: "user", content: "user" }],
+      systemPrompt: "sys string",
+    };
+    const model = { provider: "openrouter" } as any;
+
+    agent.streamFn!(model, context, {});
+
+    const callCtx = baseFn.mock.calls[0][1] as any;
+    expect(callCtx.messages[0]).toEqual({
+      role: "system",
+      content: "sys string",
+      cache_control: { type: "ephemeral" },
+    });
+    expect(callCtx.systemPrompt).toBeUndefined();
+  });
+
+  it("splits system prompt on # Project Context and caches both parts", async () => {
+    const baseFn = vi.fn((_model, _ctx, _opts) => {
+      return { push: vi.fn(), end: vi.fn() } as never;
+    });
+    const agent = { streamFn: baseFn };
+
+    const { applyExtraParamsToAgent } = await import("./extra-params.js");
+    applyExtraParamsToAgent(agent, undefined, "openrouter", "anthropic/claude-3-5-sonnet");
+
+    const fullPrompt = "Static instructions...\n\n# Project Context\n\nDynamic file content...";
+    const context = {
+      messages: [],
+      systemPrompt: fullPrompt,
+    };
+    const model = { provider: "openrouter" } as any;
+
+    agent.streamFn!(model, context, {});
+
+    const callCtx = baseFn.mock.calls[0][1] as any;
+    expect(callCtx.messages).toHaveLength(2);
+
+    // Part 1: Static
+    expect(callCtx.messages[0]).toEqual({
+      role: "system",
+      content: "Static instructions...",
+      cache_control: { type: "ephemeral" },
+    });
+
+    // Part 2: Context
+    expect(callCtx.messages[1]).toEqual({
+      role: "system",
+      content: "# Project Context\n\nDynamic file content...",
+      cache_control: { type: "ephemeral" },
+    });
+  });
+});

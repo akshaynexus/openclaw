@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { makeTempWorkspace, writeWorkspaceFile } from "../test-helpers/workspace.js";
 import {
@@ -7,42 +9,37 @@ import {
 } from "./workspace.js";
 
 describe("loadWorkspaceBootstrapFiles", () => {
-  it("includes MEMORY.md when present", async () => {
+  it("ignores MEMORY.md and loads daily memory file if present", async () => {
     const tempDir = await makeTempWorkspace("openclaw-workspace-");
-    await writeWorkspaceFile({ dir: tempDir, name: "MEMORY.md", content: "memory" });
+    await writeWorkspaceFile({ dir: tempDir, name: "MEMORY.md", content: "should be ignored" });
+
+    // Simulate today's memory file
+    const today = new Date().toISOString().split("T")[0];
+    const dailyFile = `memory/${today}.md`;
+    await fs.mkdir(path.join(tempDir, "memory"), { recursive: true });
+    await writeWorkspaceFile({ dir: tempDir, name: dailyFile, content: "daily logs" });
 
     const files = await loadWorkspaceBootstrapFiles(tempDir);
-    const memoryEntries = files.filter((file) =>
-      [DEFAULT_MEMORY_FILENAME, DEFAULT_MEMORY_ALT_FILENAME].includes(file.name),
-    );
 
-    expect(memoryEntries).toHaveLength(1);
-    expect(memoryEntries[0]?.missing).toBe(false);
-    expect(memoryEntries[0]?.content).toBe("memory");
+    // MEMORY.md should NOT be in the loaded files as a standard bootstrap file
+    // (WorkspaceBootstrapFileName type doesn't include it dynamically, so we check broadly)
+    const longTermMemory = files.find((f) => f.name === "MEMORY.md");
+    expect(longTermMemory).toBeUndefined();
+
+    // Daily memory should be present
+    const dailyMemory = files.find((f) => f.name === (dailyFile as any));
+    expect(dailyMemory).toBeDefined();
+    expect(dailyMemory?.content).toBe("daily logs");
   });
 
-  it("includes memory.md when MEMORY.md is absent", async () => {
+  it("loads nothing if daily memory is missing (ignoring MEMORY.md)", async () => {
     const tempDir = await makeTempWorkspace("openclaw-workspace-");
-    await writeWorkspaceFile({ dir: tempDir, name: "memory.md", content: "alt" });
+    await writeWorkspaceFile({ dir: tempDir, name: "MEMORY.md", content: "ignored" });
 
     const files = await loadWorkspaceBootstrapFiles(tempDir);
-    const memoryEntries = files.filter((file) =>
-      [DEFAULT_MEMORY_FILENAME, DEFAULT_MEMORY_ALT_FILENAME].includes(file.name),
-    );
 
-    expect(memoryEntries).toHaveLength(1);
-    expect(memoryEntries[0]?.missing).toBe(false);
-    expect(memoryEntries[0]?.content).toBe("alt");
-  });
-
-  it("omits memory entries when no memory files exist", async () => {
-    const tempDir = await makeTempWorkspace("openclaw-workspace-");
-
-    const files = await loadWorkspaceBootstrapFiles(tempDir);
-    const memoryEntries = files.filter((file) =>
-      [DEFAULT_MEMORY_FILENAME, DEFAULT_MEMORY_ALT_FILENAME].includes(file.name),
-    );
-
-    expect(memoryEntries).toHaveLength(0);
+    // Should filter out MEMORY.md and find no daily file
+    const memoryFiles = files.filter((f) => f.name.includes("memory") || f.name === "MEMORY.md");
+    expect(memoryFiles).toHaveLength(0);
   });
 });
