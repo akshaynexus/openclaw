@@ -134,6 +134,7 @@ export async function runAgentTurnWithFallback(params: {
           return { skip: true };
         }
         const sanitized = sanitizeUserFacingText(text, {
+          streaming: true,
           errorContext: Boolean(payload.isError),
         });
         if (!sanitized.trim()) {
@@ -160,6 +161,24 @@ export async function runAgentTurnWithFallback(params: {
           params.followupRun.run.config,
           resolveAgentIdFromSessionKey(params.followupRun.run.sessionKey),
         ),
+        onError: (attempt) => {
+          if (params.opts?.onFallback) {
+            const error =
+              attempt.error instanceof Error ? attempt.error : new Error(String(attempt.error));
+            void params.opts.onFallback(
+              error,
+              {
+                provider: attempt.provider,
+                model: attempt.model,
+              },
+              {
+                attempt: attempt.attempt,
+                total: attempt.total,
+                next: attempt.next,
+              },
+            );
+          }
+        },
         run: (provider, model) => {
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
@@ -349,8 +368,33 @@ export async function runAgentTurnWithFallback(params: {
               // Must await to ensure typing indicator starts before tool summaries are emitted.
               if (evt.stream === "tool") {
                 const phase = typeof evt.data.phase === "string" ? evt.data.phase : "";
-                if (phase === "start" || phase === "update") {
+                const toolName = typeof evt.data.name === "string" ? evt.data.name : undefined;
+
+                if (phase === "start") {
                   await params.typingSignals.signalToolStart();
+                  if (toolName && params.opts?.onToolStart) {
+                    const args = evt.data.args as Record<string, unknown> | undefined;
+                    await params.opts.onToolStart(toolName, args);
+                  }
+                } else if (phase === "update") {
+                  await params.typingSignals.signalToolStart();
+                  if (toolName) {
+                    const partial = evt.data.partialResult as Record<string, unknown> | undefined;
+                    if (params.opts?.onToolUpdate) {
+                      await params.opts.onToolUpdate(toolName, partial);
+                    } else if (params.opts?.onToolStart) {
+                      // Fallback: Notify start listener of updates (legacy behavior)
+                      await params.opts.onToolStart(toolName);
+                    }
+                  }
+                } else if (phase === "result") {
+                  if (toolName && params.opts?.onToolEnd) {
+                    await params.opts.onToolEnd({
+                      toolName,
+                      isError: Boolean(evt.data.isError),
+                      result: evt.data.result,
+                    });
+                  }
                 }
               }
               // Track auto-compaction completion

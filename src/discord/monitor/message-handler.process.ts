@@ -39,6 +39,9 @@ import { deliverDiscordReply } from "./reply-delivery.js";
 import { resolveDiscordAutoThreadReplyPlan, resolveDiscordThreadStarter } from "./threading.js";
 import { sendTyping } from "./typing.js";
 
+const processedMessageIds = new Set<string>();
+const PROCESS_DEDUPE_TTL_MS = 10000;
+
 export async function processDiscordMessage(ctx: DiscordMessagePreflightContext) {
   const {
     cfg,
@@ -81,6 +84,13 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     route,
     commandAuthorized,
   } = ctx;
+
+  if (processedMessageIds.has(message.id)) {
+    logVerbose(`discord: skipping duplicate processing for message ${message.id}`);
+    return;
+  }
+  processedMessageIds.add(message.id);
+  setTimeout(() => processedMessageIds.delete(message.id), PROCESS_DEDUPE_TTL_MS);
 
   const mediaList = await resolveMediaList(message, mediaMaxBytes);
   const text = messageText;
@@ -402,6 +412,34 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
           ? !discordConfig.blockStreaming
           : undefined,
       onModelSelected,
+      onFallback: async (error, failedModel, context) => {
+        const retryLine = context?.next
+          ? `Trying with \`${context.next.provider}/${context.next.model}\`...`
+          : context
+            ? "No fallback model configured."
+            : "Trying again...";
+        await deliverDiscordReply({
+          replies: [
+            {
+              text:
+                `\u26a0\ufe0f **Model Failed:** \`${failedModel.model}\` failed.\n` +
+                `Reason: ${error.message}\n` +
+                retryLine,
+            },
+          ],
+          target: deliverTarget,
+          token,
+          accountId,
+          rest: client.rest,
+          runtime,
+          replyToId: replyReference.use(),
+          textLimit,
+          maxLinesPerMessage: discordConfig?.maxLinesPerMessage,
+          tableMode,
+          chunkMode: resolveChunkMode(cfg, "discord", accountId),
+        });
+        replyReference.markSent();
+      },
     },
   });
   markDispatchIdle();

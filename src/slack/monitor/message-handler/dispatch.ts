@@ -138,7 +138,41 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         typeof account.config.blockStreaming === "boolean"
           ? !account.config.blockStreaming
           : undefined,
-      onModelSelected,
+      onModelSelected: (modelCtx) => {
+        onModelSelected(modelCtx);
+        if (statusThreadTs) {
+          void ctx.setSlackThreadStatus({
+            channelId: message.channel,
+            threadTs: statusThreadTs,
+            status: `\ud83e\udd16 Using ${modelCtx.model}`,
+          });
+        }
+      },
+      onFallback: async (error, failedModel, context) => {
+        const replyThreadTs = replyPlan.nextThreadTs();
+        const retryLine = context?.next
+          ? `Trying with \`${context.next.provider}/${context.next.model}\`...`
+          : context
+            ? "No fallback model configured."
+            : "Trying again...";
+        await deliverReplies({
+          replies: [
+            {
+              text:
+                `\u26a0\ufe0f *Model Failed:* \`${failedModel.model}\` failed.\n` +
+                `Reason: ${error.message}\n` +
+                retryLine,
+            },
+          ],
+          target: prepared.replyTarget,
+          token: ctx.botToken,
+          accountId: account.accountId,
+          runtime,
+          textLimit: ctx.textLimit,
+          replyThreadTs,
+        });
+        replyPlan.markSent();
+      },
     },
   });
   markDispatchIdle();
