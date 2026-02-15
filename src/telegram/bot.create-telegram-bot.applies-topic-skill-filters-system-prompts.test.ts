@@ -97,12 +97,17 @@ describe("createTelegramBot", () => {
     });
 
     createTelegramBot({ token: "tok" });
-    expect(commandSpy).toHaveBeenCalled();
-    const handler = commandSpy.mock.calls[0][1] as (ctx: Record<string, unknown>) => Promise<void>;
+    const handler = commandSpy.mock.calls.find((call) => call[0] === "status")?.[1] as
+      | ((ctx: Record<string, unknown>) => Promise<void>)
+      | undefined;
+    if (!handler) {
+      throw new Error("status command handler missing");
+    }
 
     await handler({
       ...makeForumGroupMessageCtx({ threadId: 99, text: "/status" }),
       match: "",
+      me: { username: "openclaw_bot" },
     });
 
     expect(sendMessageSpy).toHaveBeenCalledWith(

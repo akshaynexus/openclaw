@@ -45,10 +45,13 @@ vi.mock("../agents/auth-profiles.js", () => ({
   resolveProfileUnusableUntilForDisplay,
 }));
 
+const hasAuthForProvider = vi.fn().mockReturnValue(true);
+
 vi.mock("../agents/model-auth.js", () => ({
   resolveEnvApiKey,
   resolveAwsSdkEnvVarName,
   getCustomProviderApiKey,
+  hasAuthForProvider,
 }));
 
 vi.mock("../agents/pi-model-discovery.js", () => {
