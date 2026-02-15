@@ -127,7 +127,7 @@ const keepGatewaySerial =
   (isCI && process.env.OPENCLAW_TEST_PARALLEL_GATEWAY !== "1");
 const parallelRuns = keepGatewaySerial ? runs.filter((entry) => entry.name !== "gateway") : runs;
 const serialRuns = keepGatewaySerial ? runs.filter((entry) => entry.name === "gateway") : [];
-const localWorkers = Math.max(4, Math.min(16, os.cpus().length));
+const localWorkers = Math.max(4, Math.min(32, os.cpus().length));
 const defaultUnitWorkers = localWorkers;
 // Local perf: extensions tend to be the critical path under parallel vitest runs; give them more headroom.
 const defaultExtensionsWorkers = Math.max(1, Math.min(6, Math.floor(localWorkers / 2)));
