@@ -1,8 +1,12 @@
 import type { OpenClawConfig } from "../config/config.js";
+import type { AuthProfileStore } from "./auth-profiles.js";
 import type { FailoverReason } from "./pi-embedded-helpers.js";
+import { isModelQuotaExhausted } from "./antigravity-quota-cache.js";
 import {
   ensureAuthProfileStore,
   isProfileInCooldown,
+  markAuthProfileFailure,
+  setAuthProfileModelCooldownUntil,
   resolveAuthProfileOrder,
 } from "./auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
@@ -12,6 +16,7 @@ import {
   isFailoverError,
   isTimeoutError,
 } from "./failover-error.js";
+import { AllModelsFailedError } from "./model-fallback-error.js";
 import {
   buildConfiguredAllowlistKeys,
   buildModelAliasIndex,
@@ -217,6 +222,28 @@ function resolveFallbackCandidates(params: {
   return candidates;
 }
 
+/**
+ * Finds the earliest cooldown expiry timestamp among the given profile IDs.
+ * Only checks profiles that are in the provided profileIds set.
+ */
+function findEarliestCooldownExpiry(
+  store: AuthProfileStore,
+  profileIds: Set<string>,
+): number | null {
+  let earliest: number | null = null;
+  for (const id of profileIds) {
+    const stats = store.usageStats?.[id];
+    if (!stats) {
+      continue;
+    }
+    const unusableUntil = Math.max(stats.cooldownUntil ?? 0, stats.disabledUntil ?? 0);
+    if (unusableUntil > 0 && (earliest === null || unusableUntil < earliest)) {
+      earliest = unusableUntil;
+    }
+  }
+  return earliest;
+}
+
 export async function runWithModelFallback<T>(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
@@ -224,6 +251,10 @@ export async function runWithModelFallback<T>(params: {
   agentDir?: string;
   /** Optional explicit fallbacks list; when provided (even empty), replaces agents.defaults.model.fallbacks. */
   fallbacksOverride?: string[];
+  /** Optional override for Antigravity quota checks (tests). */
+  quotaCheck?: typeof isModelQuotaExhausted;
+  /** Optional auth store override (tests). */
+  authStoreOverride?: AuthProfileStore | null;
   run: (provider: string, model: string) => Promise<T>;
   onError?: ModelFallbackErrorHandler;
 }): Promise<ModelFallbackRunResult<T>> {
@@ -233,9 +264,10 @@ export async function runWithModelFallback<T>(params: {
     model: params.model,
     fallbacksOverride: params.fallbacksOverride,
   });
-  const authStore = params.cfg
-    ? ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false })
-    : null;
+  const quotaCheck = params.quotaCheck ?? isModelQuotaExhausted;
+  const authStore =
+    params.authStoreOverride ??
+    (params.cfg ? ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false }) : null);
   const attempts: FallbackAttempt[] = [];
   let lastError: unknown;
 
@@ -247,17 +279,95 @@ export async function runWithModelFallback<T>(params: {
         store: authStore,
         provider: candidate.provider,
       });
-      const isAnyProfileAvailable = profileIds.some((id) => !isProfileInCooldown(authStore, id));
+      const isAnyProfileAvailable = profileIds.some(
+        (id) => !isProfileInCooldown(authStore, id, candidate.model),
+      );
 
       if (profileIds.length > 0 && !isAnyProfileAvailable) {
-        // All profiles for this provider are in cooldown; skip without attempting
-        attempts.push({
-          provider: candidate.provider,
-          model: candidate.model,
-          error: `Provider ${candidate.provider} is in cooldown (all profiles unavailable)`,
-          reason: "rate_limit",
-        });
-        continue;
+        // Only skip if this provider is the same as the original one to ensure fallbacks to other providers are still tried
+        const originalProvider = candidates[0]?.provider;
+        if (candidate.provider === originalProvider) {
+          attempts.push({
+            provider: candidate.provider,
+            model: candidate.model,
+            error: `Provider ${candidate.provider} is in cooldown (all profiles unavailable)`,
+            reason: "rate_limit",
+          });
+          continue;
+        }
+      }
+
+      // Proactive quota check for Antigravity - they don't return 429, just hang
+      if (candidate.provider === "google-antigravity") {
+        let allProfilesExhausted = true;
+        let quotaCheckAttempted = false;
+        const profileIdsNeedingBackoff: string[] = [];
+        for (const profileId of profileIds) {
+          if (isProfileInCooldown(authStore, profileId, candidate.model)) {
+            continue;
+          }
+          const profile = authStore.profiles[profileId];
+          const accessToken =
+            profile && "access" in profile && typeof profile.access === "string"
+              ? profile.access
+              : profile && profile.type === "token"
+                ? profile.token
+                : undefined;
+          if (!profile || !accessToken) {
+            continue;
+          }
+          quotaCheckAttempted = true;
+          try {
+            const quotaResult = await quotaCheck(profileId, accessToken, candidate.model);
+            if (!quotaResult.exhausted) {
+              allProfilesExhausted = false;
+              break;
+            }
+            if (quotaResult.resetAt && Number.isFinite(quotaResult.resetAt)) {
+              if (quotaResult.resetAt > Date.now()) {
+                await setAuthProfileModelCooldownUntil({
+                  store: authStore,
+                  profileId,
+                  modelId: candidate.model,
+                  untilMs: quotaResult.resetAt,
+                  agentDir: params.agentDir,
+                });
+              } else {
+                profileIdsNeedingBackoff.push(profileId);
+              }
+            } else {
+              profileIdsNeedingBackoff.push(profileId);
+            }
+          } catch {
+            // Quota check failed - don't block, let request proceed
+            allProfilesExhausted = false;
+            break;
+          }
+        }
+        if (allProfilesExhausted && quotaCheckAttempted) {
+          // Mark profiles as rate-limited when we don't have a precise reset time.
+          if (profileIdsNeedingBackoff.length > 0) {
+            await Promise.all(
+              profileIdsNeedingBackoff.map((profileId) =>
+                markAuthProfileFailure({
+                  store: authStore,
+                  profileId,
+                  reason: "rate_limit",
+                  cfg: params.cfg,
+                  agentDir: params.agentDir,
+                  modelId: candidate.model,
+                }),
+              ),
+            );
+          }
+          attempts.push({
+            provider: candidate.provider,
+            model: candidate.model,
+            error: `Model ${candidate.model} quota exhausted (all profiles at 99%+)`,
+            reason: "rate_limit",
+          });
+          continue;
+        }
       }
     }
     try {
@@ -299,12 +409,14 @@ export async function runWithModelFallback<T>(params: {
         status: described.status,
         code: described.code,
       });
+      const next = candidates[i + 1];
       await params.onError?.({
         provider: candidate.provider,
         model: candidate.model,
         error: normalized,
         attempt: i + 1,
         total: candidates.length,
+        next: next ? { provider: next.provider, model: next.model } : undefined,
       });
     }
   }
@@ -323,9 +435,32 @@ export async function runWithModelFallback<T>(params: {
           )
           .join(" | ")
       : "unknown";
-  throw new Error(`All models failed (${attempts.length || candidates.length}): ${summary}`, {
-    cause: lastError instanceof Error ? lastError : undefined,
-  });
+
+  // Check if all failures are due to rate limiting
+  const allRateLimited = attempts.length > 0 && attempts.every((a) => a.reason === "rate_limit");
+
+  let retryAfterMs: number | undefined;
+  if (allRateLimited && authStore) {
+    // Collect only the profileIds that were actually tried (from candidates)
+    const profileIds = new Set<string>();
+    for (const candidate of candidates) {
+      const profiles = resolveAuthProfileOrder({
+        cfg: params.cfg,
+        store: authStore,
+        provider: candidate.provider,
+      });
+      profiles.forEach((id) => profileIds.add(id));
+    }
+    const earliestExpiry = findEarliestCooldownExpiry(authStore, profileIds);
+    if (earliestExpiry) {
+      retryAfterMs = Math.max(0, earliestExpiry - Date.now());
+    }
+  }
+
+  throw new AllModelsFailedError(
+    `All models failed (${attempts.length || candidates.length}): ${summary}`,
+    { attempts, allInCooldown: allRateLimited, retryAfterMs, cause: lastError },
+  );
 }
 
 export async function runWithImageModelFallback<T>(params: {
