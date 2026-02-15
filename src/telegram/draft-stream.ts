@@ -8,6 +8,8 @@ export type TelegramDraftStream = {
   update: (text: string) => void;
   flush: () => Promise<void>;
   stop: () => void;
+  delete: () => Promise<void>;
+  getMessageId: () => number | undefined;
 };
 
 export function createTelegramDraftStream(params: {

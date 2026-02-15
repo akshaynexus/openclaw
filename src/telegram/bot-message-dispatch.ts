@@ -527,86 +527,236 @@ export const dispatchTelegramMessage = async ({
     skippedNonSilent: 0,
   };
 
-  const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
-    ctx: ctxPayload,
-    cfg,
-    dispatcherOptions: {
-      ...prefixOptions,
-      deliver: async (payload, info) => {
-        if (info.kind === "final") {
-          await flushDraft();
-          draftStream?.stop();
-        }
-        const result = await deliverReplies({
-          replies: [payload],
-          chatId: String(chatId),
+  // Create placeholder controller if enabled
+  const placeholderConfig = telegramCfg.placeholder ?? {};
+  const placeholder = createPlaceholderController({
+    config: placeholderConfig,
+    sender: {
+      send: async (text) => {
+        const result = await sendMessageTelegram(String(chatId), text, {
           token: opts.token,
-          runtime,
-          bot,
-          replyToMode,
-          textLimit,
-          thread: threadSpec,
-          tableMode,
-          chunkMode,
-          onVoiceRecording: sendRecordVoice,
-          linkPreview: telegramCfg.linkPreview,
-          replyQuoteText,
+          messageThreadId: threadSpec.id,
+          textMode: "html",
         });
-        if (result.delivered) {
-          deliveryState.delivered = true;
-        }
+        return { messageId: result.messageId, chatId: result.chatId };
       },
-      onSkip: (_payload, info) => {
-        if (info.reason !== "silent") {
-          deliveryState.skippedNonSilent += 1;
-        }
+      edit: async (messageId, text) => {
+        await editMessageTelegram(String(chatId), Number(messageId), text, {
+          token: opts.token,
+          textMode: "html",
+        });
       },
-      onError: (err, info) => {
-        runtime.error?.(danger(`telegram ${info.kind} reply failed: ${String(err)}`));
+      delete: async (messageId) => {
+        await deleteMessageTelegram(String(chatId), Number(messageId), {
+          token: opts.token,
+        });
       },
-      onReplyStart: createTypingCallbacks({
-        start: sendTyping,
-        onStartError: (err) => {
-          logTypingFailure({
-            log: logVerbose,
-            channel: "telegram",
-            target: String(chatId),
-            error: err,
-          });
-        },
-      }).onReplyStart,
     },
-    replyOptions: {
-      skillFilter,
-      disableBlockStreaming,
-      onPartialReply: draftStream ? (payload) => updateDraftFromPartial(payload.text) : undefined,
-      onModelSelected,
-    },
+    log: logVerbose,
   });
-  draftStream?.stop();
-  let sentFallback = false;
-  if (!deliveryState.delivered && deliveryState.skippedNonSilent > 0) {
-    const result = await deliverReplies({
-      replies: [{ text: EMPTY_RESPONSE_FALLBACK }],
-      chatId: String(chatId),
-      token: opts.token,
-      runtime,
-      bot,
-      replyToMode,
-      textLimit,
-      thread: threadSpec,
-      tableMode,
-      chunkMode,
-      linkPreview: telegramCfg.linkPreview,
-      replyQuoteText,
-    });
-    sentFallback = result.delivered;
+
+  // Send placeholder immediately when processing starts
+  if (placeholderConfig.enabled) {
+    await placeholder.start();
   }
 
-  const hasFinalResponse = queuedFinal || sentFallback;
+  let sentFallback = false;
+  let hasFinalResponse = false;
+  try {
+    const { queuedFinal: qf } = await dispatchReplyWithBufferedBlockDispatcher({
+      ctx: ctxPayload,
+      cfg,
+      dispatcherOptions: {
+        responsePrefix: prefixContext.responsePrefix,
+        responsePrefixContextProvider: prefixContext.responsePrefixContextProvider,
+        deliver: async (payload, info) => {
+          let editMessageId: number | undefined;
+          if (info.kind === "final") {
+            await flushDraft();
+            editMessageId = draftStream?.getMessageId();
+            draftStream?.stop();
+            // Clear status before final reply
+            draftToolStatus = "";
+            draftModelStatus = "";
+            // Clean up placeholder before sending final reply
+            await placeholder.cleanup();
+          }
+          const result = await deliverReplies({
+            replies: [payload],
+            chatId: String(chatId),
+            token: opts.token,
+            runtime,
+            bot,
+            replyToMode,
+            textLimit,
+            thread: threadSpec,
+            tableMode,
+            chunkMode,
+            onVoiceRecording: sendRecordVoice,
+            linkPreview: telegramCfg.linkPreview,
+            replyQuoteText,
+            editMessageId,
+          });
+          if (result.delivered) {
+            deliveryState.delivered = true;
+          }
+        },
+        onSkip: (_payload, info) => {
+          if (info.reason !== "silent") {
+            deliveryState.skippedNonSilent += 1;
+          }
+        },
+        onError: (err, info) => {
+          isStreaming = false;
+          runtime.error?.(danger(`telegram ${info.kind} reply failed: ${String(err)}`));
+          // Also notify user about delivery failures if they are critical
+          if (info.kind === "final" && !deliveryState.delivered) {
+            void deliverReplies({
+              replies: [{ text: `\u26a0\ufe0f *Delivery failed:* ${String(err)}` }],
+              chatId: String(chatId),
+              token: opts.token,
+              runtime,
+              bot,
+              replyToMode,
+              textLimit,
+              thread: threadSpec,
+            });
+          }
+        },
+        onReplyStart: createTypingCallbacks({
+          start: sendTyping,
+          onStartError: (err) => {
+            logTypingFailure({
+              log: logVerbose,
+              channel: "telegram",
+              target: String(chatId),
+              error: err,
+            });
+          },
+        }).onReplyStart,
+      },
+      replyOptions: {
+        skillFilter,
+        disableBlockStreaming,
+        onPartialReply: draftStream ? (payload) => updateDraftFromPartial(payload.text) : undefined,
+        onReasoningStream: draftStream
+          ? (payload) => {
+              if (payload.text) {
+                // strip the "Reasoning:" prefix since we use <think> tags (now blockquote)
+                draftReasoning = payload.text.replace(/^Reasoning:\s*/i, "").trim();
+                updateDraftCombined();
+              }
+            }
+          : undefined,
+        onModelSelected: (ctx) => {
+          prefixContext.onModelSelected(ctx);
+          if (draftStream) {
+            // Only show model info if it changed from the last shown model
+            const modelKey = `${ctx.provider}/${ctx.model}`;
+            if (modelKey !== lastShownModel) {
+              draftModelStatus = `\ud83e\udd16 Using <b>${escapeHtml(ctx.model)}</b>`;
+              updateDraftCombined();
+            }
+            lastShownModel = modelKey;
+          }
+        },
+        onFallback: async (error, failedModel, context) => {
+          const retryLine = context?.next
+            ? `Trying with <b>${escapeHtml(`${context.next.provider}/${context.next.model}`)}</b>...`
+            : context
+              ? "No fallback model configured."
+              : "Trying again...";
+          const msg =
+            `\u26a0\ufe0f <b>Model Failed:</b> ${escapeHtml(failedModel.model)} failed.\n` +
+            `Reason: ${escapeHtml(error.message)}\n` +
+            retryLine;
+          await sendMessageTelegram(String(chatId), msg, {
+            token: opts.token,
+            messageThreadId: threadSpec.id,
+            textMode: "html",
+          });
+        },
+        onToolStart: async (toolName, args) => {
+          if (placeholderConfig.enabled) {
+            await placeholder.onTool(toolName, args);
+          }
+          if (draftStream) {
+            const argsStr = formatToolArgs(toolName, args);
+            lastToolName = toolName;
+            lastToolArgs = argsStr;
+            draftToolStatus = `🛠️ <b>Running ${escapeHtml(toolName)}</b>${argsStr}...`;
+            updateDraftCombined();
+          }
+        },
+        onToolUpdate: async (toolName, args) => {
+          if (draftStream) {
+            const argsStr = formatToolArgs(toolName, args);
+            lastToolName = toolName;
+            lastToolArgs = argsStr;
+            draftToolStatus = `🛠️ <b>Running ${escapeHtml(toolName)}</b>${argsStr}...`;
+            updateDraftCombined();
+          }
+        },
+        onToolEnd: async (res) => {
+          if (draftStream) {
+            const icon = res.isError ? "⚠️" : "✅";
+            const status = res.isError ? "failed" : "finished";
+            const argsSuffix = lastToolName === res.toolName ? lastToolArgs : "";
+            draftToolStatus = `${icon} <b>${escapeHtml(res.toolName)}</b> ${status}${argsSuffix}...`;
+            updateDraftCombined();
+          }
+        },
+      },
+    });
+
+    draftStream?.stop();
+    if (!deliveryState.delivered && deliveryState.skippedNonSilent > 0) {
+      const result = await deliverReplies({
+        replies: [{ text: EMPTY_RESPONSE_FALLBACK }],
+        chatId: String(chatId),
+        token: opts.token,
+        runtime,
+        bot,
+        replyToMode,
+        textLimit,
+        thread: threadSpec,
+        tableMode,
+        chunkMode,
+        linkPreview: telegramCfg.linkPreview,
+        replyQuoteText,
+      });
+      if (result.delivered) {
+        sentFallback = true;
+      }
+    }
+    hasFinalResponse = qf || sentFallback;
+  } catch (err) {
+    runtime.error?.(danger(`telegram reply agent error: ${String(err)}`));
+    if (!deliveryState.delivered) {
+      const result = await deliverReplies({
+        replies: [{ text: `\u26a0\ufe0f *An error occurred:* ${String(err)}` }],
+        chatId: String(chatId),
+        token: opts.token,
+        runtime,
+        bot,
+        replyToMode,
+        textLimit,
+        thread: threadSpec,
+      });
+      hasFinalResponse = result.delivered;
+    }
+  } finally {
+    // Explicitly clean up placeholder in case of errors/aborts
+    await placeholder.cleanup();
+  }
+
   if (!hasFinalResponse) {
     if (isGroup && historyKey) {
-      clearHistoryEntriesIfEnabled({ historyMap: groupHistories, historyKey, limit: historyLimit });
+      clearHistoryEntriesIfEnabled({
+        historyMap: groupHistories,
+        historyKey,
+        limit: historyLimit,
+      });
     }
     return;
   }

@@ -9,14 +9,17 @@ import {
   resolveInboundDebounceMs,
 } from "../auto-reply/inbound-debounce.js";
 import { buildCommandsPaginationKeyboard } from "../auto-reply/reply/commands-info.js";
-import { buildModelsProviderData } from "../auto-reply/reply/commands-models.js";
+import {
+  buildModelsProviderData,
+  buildModelsUsageLabels,
+} from "../auto-reply/reply/commands-models.js";
 import { resolveStoredModelOverride } from "../auto-reply/reply/model-selection.js";
 import { listSkillCommandsForAgents } from "../auto-reply/skill-commands.js";
 import { buildCommandsMessagePaginated } from "../auto-reply/status.js";
 import { resolveChannelConfigWrites } from "../channels/plugins/config-writes.js";
 import { loadConfig } from "../config/config.js";
 import { writeConfigFile } from "../config/io.js";
-import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
+import { loadSessionStore, resolveStorePath, saveSessionStore } from "../config/sessions.js";
 import { danger, logVerbose, warn } from "../globals.js";
 import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
 import { resolveAgentRoute } from "../routing/resolve-route.js";
@@ -568,6 +571,7 @@ export const registerTelegramHandlers = ({
           const pageSize = getModelsPageSize();
           const totalPages = calculateTotalPages(models.length, pageSize);
           const safePage = Math.max(1, Math.min(page, totalPages));
+          const usageLabels = await buildModelsUsageLabels({ provider, models });
 
           // Resolve current model from session (prefer overrides)
           const currentModel = resolveTelegramSessionModel({
@@ -582,6 +586,7 @@ export const registerTelegramHandlers = ({
             provider,
             models,
             currentModel,
+            modelLabels: usageLabels,
             currentPage: safePage,
             totalPages,
             pageSize,
@@ -1129,7 +1134,7 @@ export const registerTelegramHandlers = ({
         ? `telegram:${accountId ?? "default"}:${conversationKey}:${senderId}`
         : null;
       await inboundDebouncer.enqueue({
-        ctx,
+        ctx: ctx as unknown as TelegramContext,
         msg,
         allMedia,
         storeAllowFrom,
@@ -1138,6 +1143,122 @@ export const registerTelegramHandlers = ({
       });
     } catch (err) {
       runtime.error?.(danger(`handler failed: ${String(err)}`));
+    }
+  });
+
+  // Channel post handler - for Telegram broadcast channels
+  bot.on("channel_post", async (ctx) => {
+    try {
+      const msg = ctx.channelPost;
+      if (!msg) {
+        return;
+      }
+      if (shouldSkipUpdate(ctx)) {
+        return;
+      }
+
+      const chatId = msg.chat.id;
+      const storeAllowFrom = await readChannelAllowFromStore("telegram").catch(() => []);
+      const { channelConfig } = resolveTelegramChannelConfig(chatId);
+
+      // Check if channel is explicitly disabled
+      if (channelConfig?.enabled === false) {
+        logVerbose(`Blocked telegram channel ${chatId} (channel disabled)`);
+        return;
+      }
+
+      // Channel policy filtering
+      // Note: channels reuse groupPolicy default if no channelPolicy is set
+      const defaultChannelPolicy =
+        (cfg.channels?.defaults as { channelPolicy?: string })?.channelPolicy ??
+        cfg.channels?.defaults?.groupPolicy;
+      const channelPolicy =
+        (telegramCfg as { channelPolicy?: string }).channelPolicy ??
+        defaultChannelPolicy ??
+        "allowlist";
+      if (channelPolicy === "disabled") {
+        logVerbose(`Blocked telegram channel post (channelPolicy: disabled)`);
+        return;
+      }
+
+      // Check channel allowlist
+      const channelAllowlist = resolveChannelPolicy(chatId);
+      if (channelAllowlist.allowlistEnabled && !channelAllowlist.allowed) {
+        logger.info(
+          { chatId, title: msg.chat.title, reason: "not-allowed" },
+          "skipping channel post",
+        );
+        return;
+      }
+
+      // For channels with allowlist policy, check sender (sender_chat for channels)
+      if (channelPolicy === "allowlist") {
+        const senderChatId =
+          (msg as { sender_chat?: { id?: number } }).sender_chat?.id ?? msg.chat.id;
+        const effectiveChannelAllow = normalizeAllowFromWithStore({
+          allowFrom: channelConfig?.allowFrom ?? channelAllowFrom ?? [],
+          storeAllowFrom,
+        });
+        if (!effectiveChannelAllow.hasEntries) {
+          logVerbose(
+            "Blocked telegram channel post (channelPolicy: allowlist, no channel allowlist entries)",
+          );
+          return;
+        }
+        if (
+          !isSenderAllowed({
+            allow: effectiveChannelAllow,
+            senderId: String(senderChatId),
+            senderUsername: (msg.chat as { username?: string }).username ?? "",
+          })
+        ) {
+          logVerbose(
+            `Blocked telegram channel post from ${senderChatId} (channelPolicy: allowlist)`,
+          );
+          return;
+        }
+      }
+
+      // Create a compatible context for media resolution and message processing
+      const getFile = typeof ctx.getFile === "function" ? ctx.getFile.bind(ctx) : async () => ({});
+      const channelCtx: TelegramContext = {
+        message: msg as Message,
+        me: ctx.me,
+        getFile,
+      };
+
+      // Handle media
+      let media: Awaited<ReturnType<typeof resolveMedia>> = null;
+      try {
+        media = await resolveMedia(channelCtx, mediaMaxBytes, opts.token, opts.proxyFetch);
+      } catch (mediaErr) {
+        const errMsg = String(mediaErr);
+        if (errMsg.includes("exceeds") && errMsg.includes("MB limit")) {
+          logger.warn({ chatId, error: errMsg }, "channel media exceeds size limit");
+          return;
+        }
+        throw mediaErr;
+      }
+
+      const hasText = Boolean((msg.text ?? msg.caption ?? "").trim());
+      if (!media && !hasText) {
+        logVerbose("telegram: skipping channel post with no text or media");
+        return;
+      }
+
+      const allMedia = media
+        ? [
+            {
+              path: media.path,
+              contentType: media.contentType,
+            },
+          ]
+        : [];
+
+      // Process the channel post
+      await processMessage(channelCtx, allMedia, storeAllowFrom, { isChannel: true });
+    } catch (err) {
+      runtime.error?.(danger(`channel_post handler failed: ${String(err)}`));
     }
   });
 };
