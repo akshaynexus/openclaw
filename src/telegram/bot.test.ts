@@ -64,6 +64,14 @@ vi.mock("../pairing/pairing-store.js", () => ({
   upsertChannelPairingRequest,
 }));
 
+vi.mock("../agents/model-catalog.js", () => ({
+  loadModelCatalog: vi.fn(async () => []),
+}));
+
+vi.mock("../auto-reply/reply/directive-handling.model-picker.js", () => ({
+  buildModelPickerItems: vi.fn(() => []),
+}));
+
 const { enqueueSystemEvent } = vi.hoisted(() => ({
   enqueueSystemEvent: vi.fn(),
 }));
@@ -852,7 +860,7 @@ describe("createTelegramBot", () => {
 
     expect(replySpy).toHaveBeenCalledTimes(1);
     expect(
-      sendMessageSpy.mock.calls.some(
+      (sendMessageSpy.mock.calls as unknown[][]).some(
         (call) => call[1] === "You are not authorized to use this command.",
       ),
     ).toBe(false);

@@ -366,6 +366,22 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     resolveBotTopicsEnabled,
   });
 
+  registerTelegramHandlers({
+    cfg,
+    accountId: account.accountId,
+    bot,
+    opts,
+    runtime,
+    mediaMaxBytes,
+    telegramCfg,
+    groupAllowFrom,
+    resolveGroupPolicy,
+    resolveTelegramGroupConfig,
+    shouldSkipUpdate,
+    processMessage,
+    logger,
+  } as any);
+
   registerTelegramNativeCommands({
     bot,
     cfg,
@@ -476,22 +492,6 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     } catch (err) {
       runtime.error?.(danger(`telegram reaction handler failed: ${String(err)}`));
     }
-  });
-
-  registerTelegramHandlers({
-    cfg,
-    accountId: account.accountId,
-    bot,
-    opts,
-    runtime,
-    mediaMaxBytes,
-    telegramCfg,
-    groupAllowFrom,
-    resolveGroupPolicy,
-    resolveTelegramGroupConfig,
-    shouldSkipUpdate,
-    processMessage,
-    logger,
   });
 
   return bot;
