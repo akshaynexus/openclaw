@@ -12,6 +12,7 @@ import {
   downgradeOpenAIReasoningBlocks,
   isCompactionFailureError,
   isGoogleModelApi,
+  normalizeToolCallArguments,
   sanitizeGoogleTurnOrdering,
   sanitizeSessionMessagesImages,
 } from "../pi-embedded-helpers.js";
@@ -445,6 +446,11 @@ export async function sanitizeSessionHistory(params: {
     : sanitizedToolCalls;
   const sanitizedToolResults = stripToolResultDetails(repairedTools);
 
+  // Normalize toolCall arguments to ensure they're always an object.
+  // Some models omit `arguments` for tools with no required params,
+  // but Anthropic API requires `input` to be present.
+  const normalizedArgs = normalizeToolCallArguments(sanitizedToolResults);
+
   const isOpenAIResponsesApi =
     params.modelApi === "openai-responses" || params.modelApi === "openai-codex-responses";
   const hasSnapshot = Boolean(params.provider || params.modelApi || params.modelId);
@@ -459,8 +465,8 @@ export async function sanitizeSessionHistory(params: {
     : false;
   const sanitizedOpenAI =
     isOpenAIResponsesApi && modelChanged
-      ? downgradeOpenAIReasoningBlocks(sanitizedToolResults)
-      : sanitizedToolResults;
+      ? downgradeOpenAIReasoningBlocks(normalizedArgs)
+      : normalizedArgs;
 
   if (hasSnapshot && (!priorSnapshot || modelChanged)) {
     appendModelSnapshot(params.sessionManager, {
